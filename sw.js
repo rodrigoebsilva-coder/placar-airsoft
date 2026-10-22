@@ -1,26 +1,38 @@
-const CACHE_NAME = 'tactical-cmd-v2.3.1';
+const CACHE_NAME = 'tactical-cmd-v2.4.0';
 const CORE_ASSETS = [
   './',
-  './index.html',
   './styles.css',
   './app.js',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
-  './icon-512.png',
-  'https://cdn.tailwindcss.com',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@600;700;800&display=swap'
+  './icon-512.png'
 ];
+
+// Helper to strip the `redirected` flag from a Response so Chrome never throws ERR_FAILED on navigation
+async function cleanRedirectedResponse(response) {
+  if (!response || !response.redirected) {
+    return response;
+  }
+  const body = await response.blob();
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       for (const asset of CORE_ASSETS) {
         try {
-          const req = new Request(asset, { mode: asset.startsWith('http') ? 'no-cors' : 'same-origin' });
+          const req = new Request(asset, { redirect: 'follow' });
           const res = await fetch(req);
-          await cache.put(req, res);
+          if (res && res.status === 200) {
+            const cleanRes = await cleanRedirectedResponse(res);
+            await cache.put(req, cleanRes);
+          }
         } catch (err) {
           console.warn('[SW] Failed to pre-cache asset:', asset, err);
         }
@@ -51,21 +63,48 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // For HTML navigation requests (e.g. opening installed PWA at ./ or ./index.html):
+  // Use Network-First with clean response fallback so Vercel redirects never cause ERR_FAILED
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (networkResponse) => {
+          const cleanRes = await cleanRedirectedResponse(networkResponse);
+          if (cleanRes && cleanRes.status === 200) {
+            const clone = cleanRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('./', clone));
+          }
+          return cleanRes;
+        })
+        .catch(async () => {
+          const cached =
+            (await caches.match(event.request)) ||
+            (await caches.match('./')) ||
+            (await caches.match('./index.html'));
+          return cleanRedirectedResponse(cached);
+        })
+    );
+    return;
+  }
+
+  // For static assets: Stale-While-Revalidate with redirect sanitization
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
-        .then((networkResponse) => {
+        .then(async (networkResponse) => {
           if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
-            const responseClone = networkResponse.clone();
+            const cleanRes = await cleanRedirectedResponse(networkResponse);
+            const responseClone = cleanRes.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseClone);
             });
+            return cleanRes;
           }
           return networkResponse;
         })
         .catch(() => cachedResponse);
 
-      return cachedResponse || fetchPromise;
+      return cachedResponse ? cleanRedirectedResponse(cachedResponse) : fetchPromise;
     })
   );
 });
