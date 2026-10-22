@@ -2061,7 +2061,8 @@ function copyWhatsappReport() {
   }
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`⚡ _Gerado via Tactical Command PWA_`);
+  lines.push(`⚡ _Desenvolvido por SOLia Labs_`);
+  lines.push(`🔗 https://www.instagram.com/soliaoficial`);
 
   const text = lines.join('\n');
   navigator.clipboard

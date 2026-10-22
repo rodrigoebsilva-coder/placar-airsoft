@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tactical-cmd-v2.5.0';
+const CACHE_NAME = 'tactical-cmd-v2.5.1';
 const CORE_ASSETS = [
   './',
   './styles.css',

@@ -545,14 +545,24 @@
     </main>
 
     <!-- FOOTER STATUS BAR -->
-    <footer class="bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-      <div class="flex items-center gap-2">
+    <footer class="bg-zinc-900/90 border border-zinc-800 rounded-xl px-4 py-3 flex flex-col sm:flex-row flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+      <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-center sm:text-left">
         <span class="font-bold text-zinc-300">TACTICAL MATCH CONTROLLER</span>
-        <span>•</span>
-        <span id="footerSyncModeText">Modo Local Offline + Suporte a Sessão em Nuvem (Supabase Realtime)</span>
+        <span class="hidden sm:inline">•</span>
+        <span id="footerSyncModeText">Modo Local Offline + Suporte a Sessão em Nuvem</span>
       </div>
-      <div class="font-tactical-mono text-zinc-400">
-        Toque nos soldados para alternar <span class="text-lime-400 font-bold">VIVO</span> / <span class="text-red-400 font-bold">K.I.A.</span>
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <span class="font-tactical-mono text-zinc-400 hidden md:inline">
+          Toque nos soldados para alternar <span class="text-lime-400 font-bold">VIVO</span> / <span class="text-red-400 font-bold">K.I.A.</span>
+        </span>
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-950 hover:bg-zinc-800 border border-lime-400/50 text-lime-400 hover:text-lime-300 font-extrabold text-xs tracking-wide transition shadow-[0_0_12px_rgba(163,230,53,0.15)]"
+        >
+          <span>⚡ Desenvolvido por SOLia Labs</span>
+        </a>
       </div>
     </footer>
 
@@ -887,6 +897,18 @@
         </details>
 
       </div>
+
+      <!-- Cloud Modal Footer -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-3 flex items-center justify-center">
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition"
+        >
+          ⚡ Desenvolvido por SOLia Labs
+        </a>
+      </div>
     </div>
   </div>
 
@@ -1036,8 +1058,16 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex justify-end">
-        <button id="btnDoneRoster" type="button" class="btn-tactical min-h-[56px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-sm sm:text-base font-black">
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition order-2 sm:order-1"
+        >
+          ⚡ Desenvolvido por SOLia Labs
+        </a>
+        <button id="btnDoneRoster" type="button" class="w-full sm:w-auto btn-tactical min-h-[56px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-sm sm:text-base font-black order-1 sm:order-2">
           ✅ CONCLUIR ALISTAMENTO
         </button>
       </div>
@@ -1180,17 +1210,29 @@
       </div>
 
       <!-- Footer Confirm Button -->
-      <div class="bg-zinc-950 border-t border-zinc-800 p-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <span class="text-xs text-zinc-400 font-semibold">
-          Ao confirmar, o placar de rounds e o Hall of Fame serão atualizados para todos os celulares da sessão.
-        </span>
-        <button
-          id="btnConfirmMatchResult"
-          type="button"
-          class="w-full sm:w-auto btn-tactical min-h-[60px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-base sm:text-lg font-black shadow-[0_0_25px_rgba(163,230,53,0.45)]"
-        >
-          ✅ CONFIRMAR RESULTADO E PONTUAR
-        </button>
+      <div class="bg-zinc-950 border-t border-zinc-800 p-4 sm:px-6 flex flex-col gap-3">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span class="text-xs text-zinc-400 font-semibold text-center sm:text-left">
+            Ao confirmar, o placar de rounds e o Hall of Fame serão atualizados para todos os celulares da sessão.
+          </span>
+          <button
+            id="btnConfirmMatchResult"
+            type="button"
+            class="w-full sm:w-auto btn-tactical min-h-[60px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-base sm:text-lg font-black shadow-[0_0_25px_rgba(163,230,53,0.45)]"
+          >
+            ✅ CONFIRMAR RESULTADO E PONTUAR
+          </button>
+        </div>
+        <div class="border-t border-zinc-800/80 pt-2.5 flex justify-center">
+          <a
+            href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition"
+          >
+            ⚡ Desenvolvido por SOLia Labs
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -1269,22 +1311,34 @@
       </div>
 
       <!-- Footer with WhatsApp Export -->
-      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
-        <button
-          id="btnCopyWhatsapp"
-          type="button"
-          class="flex-1 sm:flex-initial btn-tactical min-h-[56px] px-6 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black shadow-[0_0_20px_rgba(163,230,53,0.35)]"
-        >
-          📋 COPIAR RELATÓRIO PARA WHATSAPP
-        </button>
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <button
+            id="btnCopyWhatsapp"
+            type="button"
+            class="flex-1 sm:flex-initial btn-tactical min-h-[56px] px-6 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black shadow-[0_0_20px_rgba(163,230,53,0.35)]"
+          >
+            📋 COPIAR RELATÓRIO PARA WHATSAPP
+          </button>
 
-        <button
-          id="btnDoneReport"
-          type="button"
-          class="btn-tactical min-h-[56px] px-6 bg-zinc-800 hover:bg-zinc-700 text-white text-xs sm:text-sm font-black"
-        >
-          FECHAR
-        </button>
+          <button
+            id="btnDoneReport"
+            type="button"
+            class="btn-tactical min-h-[56px] px-6 bg-zinc-800 hover:bg-zinc-700 text-white text-xs sm:text-sm font-black"
+          >
+            FECHAR
+          </button>
+        </div>
+        <div class="border-t border-zinc-800/80 pt-2.5 flex justify-center">
+          <a
+            href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition"
+          >
+            ⚡ Desenvolvido por SOLia Labs
+          </a>
+        </div>
       </div>
     </div>
   </div>
@@ -1389,8 +1443,16 @@
       </div>
 
       <!-- Footer -->
-      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex justify-end">
-        <button id="btnDoneHelp" type="button" class="btn-tactical min-h-[52px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black">
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition order-2 sm:order-1"
+        >
+          ⚡ Desenvolvido por SOLia Labs
+        </a>
+        <button id="btnDoneHelp" type="button" class="w-full sm:w-auto btn-tactical min-h-[52px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black order-1 sm:order-2">
           ✅ ENTENDIDO, PRONTO PARA COMBATE!
         </button>
       </div>
@@ -1713,6 +1775,18 @@
           </form>
         </div>
 
+      </div>
+
+      <!-- Auth / Login Screen Footer -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-3.5 flex items-center justify-center">
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-lime-400/50 text-lime-400 hover:text-lime-300 font-extrabold text-xs tracking-wide transition shadow-[0_0_15px_rgba(163,230,53,0.18)]"
+        >
+          <span>⚡ Desenvolvido por SOLia Labs</span>
+        </a>
       </div>
     </div>
   </div>
