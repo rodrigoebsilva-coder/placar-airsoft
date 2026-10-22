@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tactical-cmd-v2.4.1';
+const CACHE_NAME = 'tactical-cmd-v2.5.0';
 const CORE_ASSETS = [
   './',
   './styles.css',
@@ -6,7 +6,9 @@ const CORE_ASSETS = [
   './manifest.json',
   './icon.svg',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './sfx-kill-them-all.mp3',
+  './sfx-game-over.mp3'
 ];
 
 // Helper to strip the `redirected` flag from a Response so Chrome never throws ERR_FAILED on navigation

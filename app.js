@@ -213,12 +213,163 @@ class TacticalAudioEngine {
   constructor() {
     this.ctx = null;
     this.voices = [];
+    this.rawClipData = {
+      KILL_THEM_ALL: null,
+      GAME_OVER: null
+    };
+    this.decodedBuffers = {
+      KILL_THEM_ALL: null,
+      GAME_OVER: null
+    };
+    this.preloadFpsVoiceClips();
+
     if ('speechSynthesis' in window) {
       const loadVoices = () => {
         this.voices = window.speechSynthesis.getVoices();
       };
       loadVoices();
       window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }
+
+  async preloadFpsVoiceClips() {
+    const files = {
+      KILL_THEM_ALL: './sfx-kill-them-all.mp3',
+      GAME_OVER: './sfx-game-over.mp3'
+    };
+
+    for (const [key, url] of Object.entries(files)) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          this.rawClipData[key] = await res.arrayBuffer();
+        }
+      } catch (e) {}
+    }
+  }
+
+  makeDistortionCurve(amount = 28) {
+    const k = typeof amount === 'number' ? amount : 28;
+    const nSamples = 44100;
+    const curve = new Float32Array(nSamples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < nSamples; ++i) {
+      const x = (i * 2) / nSamples - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  }
+
+  async playFpsAnnouncerClip(clipKey, fallbackPhrase) {
+    if (state.settings.muted) return;
+    const ctx = this.ensureContext();
+
+    if (ctx) {
+      try {
+        if (!this.decodedBuffers[clipKey] && this.rawClipData[clipKey]) {
+          const copyBuffer = this.rawClipData[clipKey].slice(0);
+          this.decodedBuffers[clipKey] = await ctx.decodeAudioData(copyBuffer);
+        }
+
+        const audioBuffer = this.decodedBuffers[clipKey];
+        if (audioBuffer) {
+          const now = ctx.currentTime;
+
+          // 1. Primary Deep FPS Announcer Layer (Grave / Gruff Commander)
+          const mainSource = ctx.createBufferSource();
+          mainSource.buffer = audioBuffer;
+          mainSource.playbackRate.setValueAtTime(0.87, now);
+
+          // 2. Sub-Harmonic Demon/Arena Layer (Quake / Unreal Tournament Chest Resonance)
+          const subSource = ctx.createBufferSource();
+          subSource.buffer = audioBuffer;
+          subSource.playbackRate.setValueAtTime(0.70, now);
+
+          const subFilter = ctx.createBiquadFilter();
+          subFilter.type = 'lowpass';
+          subFilter.frequency.setValueAtTime(360, now);
+
+          const subLayerGain = ctx.createGain();
+          subLayerGain.gain.setValueAtTime(0.42, now);
+
+          subSource.connect(subFilter);
+          subFilter.connect(subLayerGain);
+
+          // 3. EQ: Deep Sub-Bass Boost + Aggressive Mid-High Presence
+          const bassBoost = ctx.createBiquadFilter();
+          bassBoost.type = 'lowshelf';
+          bassBoost.frequency.setValueAtTime(140, now);
+          bassBoost.gain.setValueAtTime(9.5, now);
+
+          const presenceBoost = ctx.createBiquadFilter();
+          presenceBoost.type = 'peaking';
+          presenceBoost.frequency.setValueAtTime(2400, now);
+          presenceBoost.Q.setValueAtTime(1.1, now);
+          presenceBoost.gain.setValueAtTime(4.5, now);
+
+          // 4. Warm Grit Saturation
+          const shaper = ctx.createWaveShaper();
+          shaper.curve = this.makeDistortionCurve(22);
+          shaper.oversample = '2x';
+
+          // 5. Arena Slapback Echo (Stadium / FPS Announcer Reverb)
+          const delay = ctx.createDelay();
+          delay.delayTime.setValueAtTime(0.11, now);
+          const feedback = ctx.createGain();
+          feedback.gain.setValueAtTime(0.24, now);
+          const wetGain = ctx.createGain();
+          wetGain.gain.setValueAtTime(0.26, now);
+
+          delay.connect(feedback);
+          feedback.connect(delay);
+          delay.connect(wetGain);
+
+          // 6. Heavy Broadcast Compressor + Master Output Boost
+          const compressor = ctx.createDynamicsCompressor();
+          compressor.threshold.setValueAtTime(-20, now);
+          compressor.knee.setValueAtTime(12, now);
+          compressor.ratio.setValueAtTime(8, now);
+          compressor.attack.setValueAtTime(0.003, now);
+          compressor.release.setValueAtTime(0.18, now);
+
+          const masterGain = ctx.createGain();
+          masterGain.gain.setValueAtTime(1.65, now);
+
+          mainSource.connect(bassBoost);
+          subLayerGain.connect(bassBoost);
+          bassBoost.connect(presenceBoost);
+          presenceBoost.connect(shaper);
+
+          shaper.connect(compressor);
+          shaper.connect(delay);
+          wetGain.connect(compressor);
+
+          compressor.connect(masterGain);
+          masterGain.connect(ctx.destination);
+
+          mainSource.start(now);
+          subSource.start(now + 0.008);
+          return;
+        }
+      } catch (err) {
+        console.warn('WebAudio FPS clip fallback:', err);
+      }
+    }
+
+    // Fallback to HTML5 Audio element with pitch shift if WebAudio buffer wasn't decoded yet
+    const url =
+      clipKey === 'KILL_THEM_ALL' ? './sfx-kill-them-all.mp3' : './sfx-game-over.mp3';
+    try {
+      const audio = new Audio(url);
+      audio.preservesPitch = false;
+      audio.mozPreservesPitch = false;
+      audio.webkitPreservesPitch = false;
+      audio.playbackRate = 0.85;
+      audio.volume = 1.0;
+      await audio.play();
+      return;
+    } catch (e) {
+      this.speakCommand(fallbackPhrase);
     }
   }
 
@@ -364,15 +515,15 @@ class TacticalAudioEngine {
   announceCombatStart() {
     this.playCombatStartImpact();
     setTimeout(() => {
-      this.speakCommand('Kill them all!');
-    }, 220);
+      this.playFpsAnnouncerClip('KILL_THEM_ALL', 'Kill them all!');
+    }, 180);
   }
 
   announceGameOver() {
     this.playGameOverSiren();
     setTimeout(() => {
-      this.speakCommand('Game Over!');
-    }, 350);
+      this.playFpsAnnouncerClip('GAME_OVER', 'Game Over!');
+    }, 320);
   }
 }
 
