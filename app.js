@@ -1990,6 +1990,26 @@ function renderAuthModal() {
   const loggedOutView = document.getElementById('authLoggedOutView');
   if (!loggedInView || !loggedOutView) return;
 
+  // Update team button labels in Quick Join inside Auth Modal
+  const btnAuthJoinA = document.getElementById('btnAuthJoinTeamA');
+  const btnAuthJoinB = document.getElementById('btnAuthJoinTeamB');
+  if (btnAuthJoinA && btnAuthJoinB) {
+    btnAuthJoinA.textContent = `🛡️ TIME A (${state.teams.A.name})`;
+    btnAuthJoinB.textContent = `⚔️ TIME B (${state.teams.B.name})`;
+
+    if (cloudMeta.joinSelectedTeam === 'B') {
+      btnAuthJoinB.className =
+        'min-h-[46px] rounded-xl border-2 border-red-500 bg-red-600/25 text-white font-black text-xs uppercase tracking-wider';
+      btnAuthJoinA.className =
+        'min-h-[46px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider';
+    } else {
+      btnAuthJoinA.className =
+        'min-h-[46px] rounded-xl border-2 border-blue-500 bg-blue-600/25 text-white font-black text-xs uppercase tracking-wider';
+      btnAuthJoinB.className =
+        'min-h-[46px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider';
+    }
+  }
+
   if (cloudMeta.authUser) {
     loggedInView.classList.remove('hidden');
     loggedOutView.classList.add('hidden');
@@ -2003,7 +2023,7 @@ function renderAuthModal() {
       badge.className =
         'inline-block px-2.5 py-0.5 rounded bg-amber-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase';
     } else {
-      badge.textContent = '🪖 OPERADOR CADASTRADO';
+      badge.textContent = '🪖 USUÁRIO AUTENTICADO (CRIADOR)';
       badge.className =
         'inline-block px-2.5 py-0.5 rounded bg-sky-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase';
     }
@@ -2115,9 +2135,29 @@ function renderMyCreatedRoomsList() {
 
 function renderCloudModal() {
   const activeBox = document.getElementById('cloudActiveRoomBox');
+  const createUnlocked = document.getElementById('createSessionUnlockedView');
+  const createLocked = document.getElementById('createSessionLockedView');
+  const myRoomsPanel = document.getElementById('myRoomsPanelContainer');
 
   document.getElementById('inputSupabaseUrl').value = cloudMeta.supabaseUrl || '';
   document.getElementById('inputSupabaseKey').value = cloudMeta.supabaseKey || '';
+
+  // Restrict Room Creation & My Rooms List exclusively to logged-in users (Email & Password)
+  if (cloudMeta.authUser) {
+    if (createUnlocked) createUnlocked.classList.remove('hidden');
+    if (createLocked) {
+      createLocked.classList.add('hidden');
+      createLocked.classList.remove('flex');
+    }
+    if (myRoomsPanel) myRoomsPanel.classList.remove('hidden');
+  } else {
+    if (createUnlocked) createUnlocked.classList.add('hidden');
+    if (createLocked) {
+      createLocked.classList.remove('hidden');
+      createLocked.classList.add('flex');
+    }
+    if (myRoomsPanel) myRoomsPanel.classList.add('hidden');
+  }
 
   // Pre-fill operator name if logged in
   const opInput = document.getElementById('inputJoinOperatorName');
@@ -2153,7 +2193,9 @@ function renderCloudModal() {
   }
 
   initSupabaseClient();
-  fetchMyCreatedRooms();
+  if (cloudMeta.authUser) {
+    fetchMyCreatedRooms();
+  }
 }
 
 function renderColorPickers() {
@@ -2953,40 +2995,87 @@ function bindEvents() {
   document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
   document.getElementById('btnDoneHelp').addEventListener('click', closeHelp);
 
-  // Auth / Login / Self-Registration Modal Controls
-  const openAuthModal = () => {
+  // Auth / Login / Self-Registration / Quick Join Modal Controls
+  const openAuthModal = (defaultTab = 'JOIN') => {
     renderAuthModal();
     document.getElementById('modalAuth').classList.remove('hidden');
+    if (!cloudMeta.authUser && defaultTab) {
+      activateAuthTab(defaultTab);
+    }
   };
   const closeAuthModal = () => {
     document.getElementById('modalAuth').classList.add('hidden');
   };
 
-  document.getElementById('btnOpenAuthModal').addEventListener('click', openAuthModal);
+  document.getElementById('btnOpenAuthModal').addEventListener('click', () => openAuthModal('JOIN'));
   document.getElementById('btnCloseAuthModal').addEventListener('click', closeAuthModal);
 
+  const tabQuickJoin = document.getElementById('tabAuthQuickJoin');
   const tabLogin = document.getElementById('tabAuthLogin');
   const tabRegister = document.getElementById('tabAuthRegister');
+  const formQuickJoin = document.getElementById('formAuthQuickJoin');
   const formLogin = document.getElementById('formAuthLogin');
   const formRegister = document.getElementById('formAuthRegister');
 
-  tabLogin.addEventListener('click', () => {
-    tabLogin.className =
-      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-lime-400 text-zinc-950 transition';
-    tabRegister.className =
-      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition';
-    formLogin.classList.remove('hidden');
+  function activateAuthTab(tabName) {
+    const inactiveClass =
+      'min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition px-1';
+    tabQuickJoin.className = inactiveClass;
+    tabLogin.className = inactiveClass;
+    tabRegister.className = inactiveClass;
+
+    formQuickJoin.classList.add('hidden');
+    formLogin.classList.add('hidden');
     formRegister.classList.add('hidden');
+
+    if (tabName === 'LOGIN') {
+      tabLogin.className =
+        'min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-lime-400 text-zinc-950 transition px-1';
+      formLogin.classList.remove('hidden');
+    } else if (tabName === 'REGISTER') {
+      tabRegister.className =
+        'min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-sky-400 text-zinc-950 transition px-1';
+      formRegister.classList.remove('hidden');
+    } else {
+      tabQuickJoin.className =
+        'min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-amber-400 text-zinc-950 transition px-1';
+      formQuickJoin.classList.remove('hidden');
+    }
+  }
+
+  tabQuickJoin.addEventListener('click', () => activateAuthTab('JOIN'));
+  tabLogin.addEventListener('click', () => activateAuthTab('LOGIN'));
+  tabRegister.addEventListener('click', () => activateAuthTab('REGISTER'));
+
+  document.getElementById('btnAuthJoinTeamA').addEventListener('click', () => {
+    cloudMeta.joinSelectedTeam = 'A';
+    saveCloudMeta();
+    renderAuthModal();
   });
 
-  tabRegister.addEventListener('click', () => {
-    tabRegister.className =
-      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-sky-400 text-zinc-950 transition';
-    tabLogin.className =
-      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition';
-    formRegister.classList.remove('hidden');
-    formLogin.classList.add('hidden');
+  document.getElementById('btnAuthJoinTeamB').addEventListener('click', () => {
+    cloudMeta.joinSelectedTeam = 'B';
+    saveCloudMeta();
+    renderAuthModal();
   });
+
+  formQuickJoin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('inputAuthJoinCode').value;
+    const name = document.getElementById('inputAuthJoinName').value;
+    document.getElementById('inputJoinSessionCode').value = code;
+    document.getElementById('inputJoinOperatorName').value = name;
+    closeAuthModal();
+    await joinCloudSession();
+  });
+
+  const btnGoToLoginFromCloud = document.getElementById('btnGoToLoginFromCloud');
+  if (btnGoToLoginFromCloud) {
+    btnGoToLoginFromCloud.addEventListener('click', () => {
+      document.getElementById('modalCloudSession').classList.add('hidden');
+      openAuthModal('LOGIN');
+    });
+  }
 
   formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -3025,11 +3114,14 @@ async function checkInitialCloudSession() {
 
   if (roomFromUrl) {
     document.getElementById('inputJoinSessionCode').value = roomFromUrl;
+    const authJoinCode = document.getElementById('inputAuthJoinCode');
+    if (authJoinCode) authJoinCode.value = roomFromUrl;
+
     if (cloudMeta.sessionCode !== roomFromUrl) {
-      // Open Cloud Modal directly so the player can type their Codinome and Join
-      renderCloudModal();
-      document.getElementById('modalCloudSession').classList.remove('hidden');
-      setTimeout(() => document.getElementById('inputJoinOperatorName').focus(), 100);
+      // Open Central Access Modal on Quick Join tab so Soldier can enter immediately without room creation privileges
+      renderAuthModal();
+      document.getElementById('modalAuth').classList.remove('hidden');
+      setTimeout(() => document.getElementById('inputAuthJoinName')?.focus(), 100);
       return;
     }
   }
