@@ -1,7 +1,7 @@
 {
   "name": "Tactical Command - Paintball & Airsoft",
   "short_name": "TacticalCmd",
-  "description": "Controlador tático de partidas de Paintball e Airsoft com cronômetro, placar de operadores, locutor de combate e ranking Hall of Fame offline.",
+  "description": "Controlador tático de partidas de Paintball e Airsoft com cronômetro, placar em nuvem, locutor de combate e ranking Hall of Fame offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -10,14 +10,20 @@
   "orientation": "any",
   "icons": [
     {
-      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%2309090b'/><rect x='6' y='6' width='180' height='180' rx='30' fill='none' stroke='%2327272a' stroke-width='4'/><circle cx='96' cy='96' r='56' fill='none' stroke='%23a3e635' stroke-width='8'/><circle cx='96' cy='96' r='24' fill='none' stroke='%23f59e0b' stroke-width='5' stroke-dasharray='12 6'/><circle cx='96' cy='96' r='6' fill='%23ef4444'/><line x1='96' y1='20' x2='96' y2='54' stroke='%23a3e635' stroke-width='8' stroke-linecap='round'/><line x1='96' y1='138' x2='96' y2='172' stroke='%23a3e635' stroke-width='8' stroke-linecap='round'/><line x1='20' y1='96' x2='54' y2='96' stroke='%23a3e635' stroke-width='8' stroke-linecap='round'/><line x1='138' y1='96' x2='172' y2='96' stroke='%23a3e635' stroke-width='8' stroke-linecap='round'/></svg>",
+      "src": "./icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%2309090b'/><rect x='16' y='16' width='480' height='480' rx='80' fill='none' stroke='%2327272a' stroke-width='10'/><circle cx='256' cy='256' r='150' fill='none' stroke='%23a3e635' stroke-width='20'/><circle cx='256' cy='256' r='68' fill='none' stroke='%23f59e0b' stroke-width='12' stroke-dasharray='32 16'/><circle cx='256' cy='256' r='16' fill='%23ef4444'/><line x1='256' y1='52' x2='256' y2='144' stroke='%23a3e635' stroke-width='20' stroke-linecap='round'/><line x1='256' y1='368' x2='256' y2='460' stroke='%23a3e635' stroke-width='20' stroke-linecap='round'/><line x1='52' y1='256' x2='144' y2='256' stroke='%23a3e635' stroke-width='20' stroke-linecap='round'/><line x1='368' y1='256' x2='460' y2='256' stroke='%23a3e635' stroke-width='20' stroke-linecap='round'/></svg>",
+      "src": "./icon-512.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }

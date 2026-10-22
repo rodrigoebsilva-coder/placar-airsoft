@@ -2334,6 +2334,17 @@ function bindEvents() {
   document.getElementById('btnCloseReport').addEventListener('click', closeReport);
   document.getElementById('btnDoneReport').addEventListener('click', closeReport);
   document.getElementById('btnCopyWhatsapp').addEventListener('click', copyWhatsappReport);
+
+  // Help / Manual Modal Controls
+  const openHelp = () => {
+    document.getElementById('modalHelp').classList.remove('hidden');
+  };
+  const closeHelp = () => {
+    document.getElementById('modalHelp').classList.add('hidden');
+  };
+  document.getElementById('btnOpenHelp').addEventListener('click', openHelp);
+  document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
+  document.getElementById('btnDoneHelp').addEventListener('click', closeHelp);
 }
 
 // Reconnect to active session or URL ?room=CODE parameter on boot

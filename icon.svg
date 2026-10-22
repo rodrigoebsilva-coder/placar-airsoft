@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#18181b" />
+      <stop offset="100%" stop-color="#09090b" />
+    </radialGradient>
+    <linearGradient id="limeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#bef264" />
+      <stop offset="100%" stop-color="#65a30d" />
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fcd34d" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+
+  <!-- Base Dark Tactical Squircle -->
+  <rect width="512" height="512" rx="108" fill="url(#bgGrad)" />
+  <rect x="18" y="18" width="476" height="476" rx="92" fill="none" stroke="#27272a" stroke-width="8" />
+
+  <!-- Corner Tactical HUD Brackets -->
+  <path d="M58 118 V74 Q58 58 74 58 H118" fill="none" stroke="#a3e635" stroke-width="8" stroke-linecap="round" opacity="0.7" />
+  <path d="M394 58 H438 Q454 58 454 74 V118" fill="none" stroke="#a3e635" stroke-width="8" stroke-linecap="round" opacity="0.7" />
+  <path d="M58 394 V438 Q58 454 74 454 H118" fill="none" stroke="#a3e635" stroke-width="8" stroke-linecap="round" opacity="0.7" />
+  <path d="M394 454 H438 Q454 454 454 438 V394" fill="none" stroke="#a3e635" stroke-width="8" stroke-linecap="round" opacity="0.7" />
+
+  <!-- Outer Scope Ring -->
+  <circle cx="256" cy="256" r="168" fill="none" stroke="url(#limeGrad)" stroke-width="16" />
+  <circle cx="256" cy="256" r="142" fill="none" stroke="#3f3f46" stroke-width="4" stroke-dasharray="18 10" />
+
+  <!-- Tactical Helmet / Mask Silhouette inside Scope -->
+  <path d="M168 232 C168 172 204 140 256 140 C308 140 344 172 344 232 L352 292 C352 330 312 366 256 366 C200 366 160 330 160 292 Z" fill="#18181b" stroke="#52525b" stroke-width="8" />
+  <!-- Visor / Goggles (Amber Tactical Lens) -->
+  <path d="M180 226 L246 242 L256 234 L266 242 L332 226 L324 272 L268 282 L256 270 L244 282 L188 272 Z" fill="url(#amberGrad)" stroke="#fef08a" stroke-width="4" />
+  <!-- Respirator Vents -->
+  <line x1="226" y1="312" x2="242" y2="338" stroke="#a1a1aa" stroke-width="7" stroke-linecap="round" />
+  <line x1="286" y1="312" x2="270" y2="338" stroke="#a1a1aa" stroke-width="7" stroke-linecap="round" />
+  <line x1="256" y1="306" x2="256" y2="342" stroke="#a1a1aa" stroke-width="7" stroke-linecap="round" />
+
+  <!-- Crosshair Reticle Lines -->
+  <line x1="256" y1="54" x2="256" y2="128" stroke="#a3e635" stroke-width="14" stroke-linecap="round" />
+  <line x1="256" y1="384" x2="256" y2="458" stroke="#a3e635" stroke-width="14" stroke-linecap="round" />
+  <line x1="54" y1="256" x2="128" y2="256" stroke="#a3e635" stroke-width="14" stroke-linecap="round" />
+  <line x1="384" y1="256" x2="458" y2="256" stroke="#a3e635" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Center Laser Red Dot -->
+  <circle cx="256" cy="256" r="14" fill="#ef4444" />
+  <circle cx="256" cy="256" r="6" fill="#fecaca" />
+</svg>

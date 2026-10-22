@@ -12,7 +12,10 @@
   <title>Tactical Command — Paintball &amp; Airsoft</title>
   
   <link rel="manifest" href="./manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%2309090b'/><circle cx='96' cy='96' r='56' fill='none' stroke='%23a3e635' stroke-width='10'/><circle cx='96' cy='96' r='10' fill='%23ef4444'/><line x1='96' y1='18' x2='96' y2='54' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='96' y1='138' x2='96' y2='174' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='18' y1='96' x2='54' y2='96' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='138' y1='96' x2='174' y2='96' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/></svg>" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -109,6 +112,12 @@
         <button id="btnToggleMute" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition" title="Ativar/Desativar Som">
           <span id="muteIcon">🔊</span>
           <span id="muteLabel" class="hidden md:inline">SOM ON</span>
+        </button>
+
+        <!-- Help / Tactical Manual Button -->
+        <button id="btnOpenHelp" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-lime-400/60 text-lime-400 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-[0_0_12px_rgba(163,230,53,0.18)]" title="Manual de Uso e Instruções de Campo">
+          <span>❓</span>
+          <span class="hidden sm:inline">AJUDA</span>
         </button>
 
         <!-- Reset Session Button -->
@@ -1146,6 +1155,114 @@
           class="btn-tactical min-h-[56px] px-6 bg-zinc-800 hover:bg-zinc-700 text-white text-xs sm:text-sm font-black"
         >
           FECHAR
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 4: MANUAL DE USO E INSTRUÇÕES DE CAMPO (HELP MODAL)               -->
+  <!-- ======================================================================= -->
+  <div id="modalHelp" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-lime-400/80 rounded-2xl w-full max-w-4xl overflow-hidden shadow-[0_0_50px_rgba(163,230,53,0.2)] my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <img src="./icon.svg" alt="Ícone Tactical Command" class="w-11 h-11 rounded-xl border border-lime-400/50" />
+          <div>
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-wider text-white">
+              📖 MANUAL DE CAMPO &amp; GUIA DE OPERAÇÃO
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Instruções completas para Juízes, Operadores, Sessão na Nuvem e Instalação Offline
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseHelp" type="button" class="min-h-[48px] min-w-[48px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-4 sm:p-6 space-y-4 max-h-[78dvh] overflow-y-auto text-sm text-zinc-300">
+
+        <!-- Section 1: Visão Geral e Papéis -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+          <h3 class="text-base font-black uppercase text-lime-400 flex items-center gap-2">
+            <span>🎯 1. COMO FUNCIONA O SISTEMA (MODO LOCAL VS NUVEM)</span>
+          </h3>
+          <p class="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            O <strong>Tactical Command</strong> pode ser operado de duas formas:
+          </p>
+          <ul class="list-disc list-inside text-xs sm:text-sm space-y-1.5 text-zinc-300">
+            <li><strong>Modo Local (1 Aparelho / Offline):</strong> O árbitro controla tudo em um único celular ou tablet na mesa de comando, mesmo em campos rurais 100% sem internet.</li>
+            <li><strong>Modo Sessão Online (Vários Celulares em Tempo Real):</strong> O Juiz cria uma sala em <span class="text-sky-300 font-bold">☁️ SESSÃO ONLINE</span> e passa o código (ou link) para os jogadores. Cada jogador entra pelo próprio celular, se alista no esquadrão e marca quando for atingido (<span class="text-red-400 font-bold">💀 FUI ATINGIDO / K.I.A.</span>).</li>
+          </ul>
+        </div>
+
+        <!-- Section 2: Alistamento e Equilíbrio de Times -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+          <h3 class="text-base font-black uppercase text-amber-400 flex items-center gap-2">
+            <span>🪖 2. ALISTAMENTO E SORTEIO DE ESQUADRÕES</span>
+          </h3>
+          <ul class="list-disc list-inside text-xs sm:text-sm space-y-1.5 text-zinc-300">
+            <li>Toque em <strong>🪖 ALISTAMENTO</strong> no topo para cadastrar os operadores pelo nome/codinome ou deixe que cada jogador se aliste ao entrar na sala online.</li>
+            <li>Use o botão <strong>🎲 SORTEAR / EQUILIBRAR TIMES</strong> para embaralhar todos os soldados cadastrados e dividi-los automaticamente meio a meio entre os dois esquadrões.</li>
+            <li>Você também pode jogar sem cadastro nominal: basta usar os botões gigantes <strong>(+)</strong> e <strong>(−)</strong> direto no contador de cada time.</li>
+          </ul>
+        </div>
+
+        <!-- Section 3: Modos de Jogo e Cronômetro -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+          <h3 class="text-base font-black uppercase text-lime-400 flex items-center gap-2">
+            <span>⏱️ 3. MODOS DE OPERAÇÃO &amp; PREPARAÇÃO</span>
+          </h3>
+          <ul class="list-disc list-inside text-xs sm:text-sm space-y-1.5 text-zinc-300">
+            <li><strong>TIME LIMIT (Contagem Regressiva):</strong> Configure os minutos de combate (`-1 MIN` / `+1 MIN`). O round encerra automaticamente quando o cronômetro zera (`00:00`) OU quando todos os operadores de um time são eliminados (`0` vivos).</li>
+            <li><strong>ELIMINATION (Mata-Mata Progressivo):</strong> Sem limite de tempo; o cronômetro conta de `00:00` para cima registrando a duração da partida até que um time chegue a `0` vivos ou o juiz finalize manualmente.</li>
+            <li><strong>Tempo de Preparação (`30s` padrão):</strong> Ao clicar em <strong>▶️ INICIAR PARTIDA</strong>, o painel pisca em âmbar (<em>"ASSUMAM SUAS POSIÇÕES"</em>) com bipes duplos a cada 15s e contagem segundo a segundo nos últimos 10s. Ao zerar, o locutor anuncia <strong>"Kill them all!"</strong> e o combate começa.</li>
+          </ul>
+        </div>
+
+        <!-- Section 4: Baixas em Combate e Conferência Pós-Partida -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+          <h3 class="text-base font-black uppercase text-red-400 flex items-center gap-2">
+            <span>💀 4. MARCAÇÃO DE BAIXAS (K.I.A.) E FIM DE JOGO</span>
+          </h3>
+          <ul class="list-disc list-inside text-xs sm:text-sm space-y-1.5 text-zinc-300">
+            <li><strong>Durante a partida:</strong> Toque no crachá de qualquer soldado no card do time (ou no botão vermelho <strong>💀 FUI ATINGIDO!</strong> no celular do jogador) para marcá-lo como <strong>K.I.A.</strong> O contador numérico de vivos diminui na hora.</li>
+            <li><strong>Conferência Pós-Partida:</strong> Quando o jogo acaba, o locutor anuncia <strong>"Game Over!"</strong> e abre o modal de conferência. Se um time perdeu por eliminação total, todos os seus soldados já aparecem marcados como mortos.</li>
+            <li>Confirme quem sobreviveu e clique em <strong>✅ CONFIRMAR RESULTADO E PONTUAR</strong> para somar `+1` vitória ao esquadrão vencedor e atualizar o ranking individual.</li>
+          </ul>
+        </div>
+
+        <!-- Section 5: Ranking Hall of Fame & Instalação PWA -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-1.5">
+            <h4 class="text-sm font-black uppercase text-amber-400">
+              🏆 5. HALL OF FAME &amp; WHATSAPP
+            </h4>
+            <p class="text-xs text-zinc-300 leading-relaxed">
+              Em <strong>🏆 RELATÓRIO</strong> você acompanha o ranking <em>"Quem Mais Ficou Vivo"</em> com medalha dourada <strong>🥇 IMORTAL</strong> para o 1º colocado e botão para copiar o resumo formatado direto para o grupo do WhatsApp.
+            </p>
+          </div>
+
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-1.5">
+            <h4 class="text-sm font-black uppercase text-sky-400">
+              📲 6. INSTALAR APP NO CELULAR (PWA)
+            </h4>
+            <p class="text-xs text-zinc-300 leading-relaxed">
+              No Android/Chrome, clique no botão <strong>📲 INSTALAR APP</strong> no topo. No iPhone (Safari), toque em <strong>Compartilhar &rarr; Adicionar à Tela de Início</strong> para instalar o ícone tático em tela cheia e usar offline.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex justify-end">
+        <button id="btnDoneHelp" type="button" class="btn-tactical min-h-[52px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black">
+          ✅ ENTENDIDO, PRONTO PARA COMBATE!
         </button>
       </div>
     </div>
