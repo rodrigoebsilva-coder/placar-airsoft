@@ -79,58 +79,66 @@
       </div>
 
       <!-- Action Buttons Toolbar -->
-      <div class="flex items-center gap-2 flex-wrap w-full xl:w-auto justify-end">
+      <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full xl:w-auto sm:justify-end">
         <!-- Native PWA Install Button -->
-        <button id="btnInstallPwa" type="button" class="hidden px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.4)] transition flex items-center gap-1.5">
+        <button id="btnInstallPwa" type="button" class="hidden w-full sm:w-auto px-3.5 h-[46px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.4)] transition flex items-center justify-center gap-1.5 whitespace-nowrap">
           📲 INSTALAR APP
         </button>
 
-        <!-- AUTH / LOGIN PROFILE BUTTON -->
-        <button id="btnOpenAuthModal" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
-          <span id="headerUserIcon">🔐</span>
-          <span id="headerUserName">ENTRAR / CONTA</span>
-          <span id="headerUserRoleBadge" class="hidden px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black">ADM</span>
-        </button>
+        <!-- Primary 2x2 Mobile Grid (Auth, Cloud, Roster, Report) -->
+        <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+          <!-- AUTH / LOGIN PROFILE BUTTON -->
+          <button id="btnOpenAuthModal" type="button" class="w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden transition">
+            <span id="headerUserIcon" class="shrink-0">🔐</span>
+            <span id="headerUserName" class="truncate max-w-[96px] sm:max-w-[150px]">CONTA</span>
+            <span id="headerUserRoleBadge" class="hidden shrink-0 px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black">ADM</span>
+          </button>
 
-        <!-- CLOUD MULTIPLAYER SESSION BUTTON -->
-        <button id="btnOpenCloudSession" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-sky-500/20 hover:bg-sky-500/30 active:scale-95 border-2 border-sky-400/80 text-sky-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-[0_0_18px_rgba(56,189,248,0.2)]">
-          <span>☁️ SESSÃO ONLINE</span>
-          <span id="headerCloudStatus" class="px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-zinc-950 text-sky-300 border border-sky-500/40">LOCAL</span>
-        </button>
+          <!-- CLOUD MULTIPLAYER SESSION BUTTON -->
+          <button id="btnOpenCloudSession" type="button" class="w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-sky-500/20 hover:bg-sky-500/30 active:scale-95 border-2 border-sky-400/80 text-sky-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap transition shadow-[0_0_18px_rgba(56,189,248,0.2)]">
+            <span class="truncate">☁️ SESSÃO</span>
+            <span id="headerCloudStatus" class="shrink-0 px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-zinc-950 text-sky-300 border border-sky-500/40">LOCAL</span>
+          </button>
 
-        <!-- Roster Modal Button -->
-        <button id="btnOpenRoster" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-800 hover:bg-zinc-700 active:scale-95 border border-zinc-600 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
-          <span>🪖 ALISTAMENTO</span>
-          <span id="headerRosterCount" class="px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-lime-400 border border-zinc-700">0</span>
-        </button>
+          <!-- Roster Modal Button -->
+          <button id="btnOpenRoster" type="button" class="w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-zinc-800 hover:bg-zinc-700 active:scale-95 border border-zinc-600 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap transition">
+            <span class="truncate">🪖 ALISTAMENTO</span>
+            <span id="headerRosterCount" class="shrink-0 px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-lime-400 border border-zinc-700">0</span>
+          </button>
 
-        <!-- Hall of Fame Report Modal Button -->
-        <button id="btnOpenReport" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border border-amber-500/50 text-amber-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
-          <span>🏆 RELATÓRIO</span>
-          <span id="headerMatchesCount" class="px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-amber-400 border border-amber-500/40">0</span>
-        </button>
+          <!-- Hall of Fame Report Modal Button -->
+          <button id="btnOpenReport" type="button" class="w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border border-amber-500/50 text-amber-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap transition">
+            <span class="truncate">🏆 RELATÓRIO</span>
+            <span id="headerMatchesCount" class="shrink-0 px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-amber-400 border border-amber-500/40">0</span>
+          </button>
+        </div>
 
-        <!-- Test Voice Announcer Button -->
-        <button id="btnTestVoice" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition" title="Testar Locutor e Sirene">
-          🎙️ TESTAR VOZ
-        </button>
+        <!-- Secondary 4-Column Mobile Grid (Voice, Sound, Help, Reset) -->
+        <div class="grid grid-cols-4 sm:flex items-center gap-2 w-full sm:w-auto">
+          <!-- Test Voice Announcer Button -->
+          <button id="btnTestVoice" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Testar Locutor e Sirene">
+            <span>🎙️</span>
+            <span class="text-[11px] sm:text-xs">VOZ</span>
+          </button>
 
-        <!-- Audio Mute / Unmute Toggle -->
-        <button id="btnToggleMute" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition" title="Ativar/Desativar Som">
-          <span id="muteIcon">🔊</span>
-          <span id="muteLabel" class="hidden md:inline">SOM ON</span>
-        </button>
+          <!-- Audio Mute / Unmute Toggle -->
+          <button id="btnToggleMute" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Ativar/Desativar Som">
+            <span id="muteIcon">🔊</span>
+            <span id="muteLabel" class="text-[11px] sm:text-xs">SOM</span>
+          </button>
 
-        <!-- Help / Tactical Manual Button -->
-        <button id="btnOpenHelp" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-lime-400/60 text-lime-400 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-[0_0_12px_rgba(163,230,53,0.18)]" title="Manual de Uso e Instruções de Campo">
-          <span>❓</span>
-          <span class="hidden sm:inline">AJUDA</span>
-        </button>
+          <!-- Help / Tactical Manual Button -->
+          <button id="btnOpenHelp" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-lime-400/60 text-lime-400 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition shadow-[0_0_12px_rgba(163,230,53,0.18)]" title="Manual de Uso e Instruções de Campo">
+            <span>❓</span>
+            <span class="text-[11px] sm:text-xs">AJUDA</span>
+          </button>
 
-        <!-- Reset Session Button -->
-        <button id="btnResetSession" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-red-950/50 hover:bg-red-900/60 active:scale-95 border border-red-800/70 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 transition" title="Zerar Sessão / Novo Jogo">
-          🗑️ <span class="hidden sm:inline">ZERAR SESSÃO</span>
-        </button>
+          <!-- Reset Session Button -->
+          <button id="btnResetSession" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-red-950/50 hover:bg-red-900/60 active:scale-95 border border-red-800/70 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Zerar Sessão / Novo Jogo">
+            <span>🗑️</span>
+            <span class="text-[11px] sm:text-xs">ZERAR</span>
+          </button>
+        </div>
       </div>
     </header>
 

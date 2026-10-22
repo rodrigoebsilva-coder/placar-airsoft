@@ -2027,22 +2027,22 @@ function renderHeaderAuthButton() {
     if (cloudMeta.authUser.isAdmin) {
       roleBadge.textContent = 'ADM';
       roleBadge.className =
-        'px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black';
+        'shrink-0 px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black';
       btn.className =
-        'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border-2 border-amber-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+        'w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border-2 border-amber-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden transition';
     } else {
-      roleBadge.textContent = 'OPERADOR';
+      roleBadge.textContent = 'OP';
       roleBadge.className =
-        'px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-sky-400 text-zinc-950 font-black';
+        'shrink-0 px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-sky-400 text-zinc-950 font-black';
       btn.className =
-        'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-900 hover:bg-zinc-800 active:scale-95 border-2 border-sky-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+        'w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-zinc-900 hover:bg-zinc-800 active:scale-95 border-2 border-sky-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden transition';
     }
   } else {
     icon.textContent = '🔐';
-    nameEl.textContent = 'ENTRAR / CONTA';
+    nameEl.textContent = 'CONTA';
     roleBadge.classList.add('hidden');
     btn.className =
-      'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+      'w-full sm:w-auto px-2.5 sm:px-3.5 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden transition';
   }
 }
 
@@ -2510,12 +2510,12 @@ function renderAudioButton() {
     icon.textContent = '🔇';
     label.textContent = 'MUDO';
     btn.className =
-      'px-3 py-2.5 min-h-[46px] rounded-xl bg-red-950/60 hover:bg-red-900/60 active:scale-95 border border-red-700 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+      'w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-red-950/60 hover:bg-red-900/60 active:scale-95 border border-red-700 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition';
   } else {
     icon.textContent = '🔊';
-    label.textContent = 'SOM ON';
+    label.textContent = 'SOM';
     btn.className =
-      'px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+      'w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition';
   }
 }
 
