@@ -2569,11 +2569,23 @@ function renderRosterModal() {
         <div class="flex items-center gap-1.5 shrink-0 ${canModify ? '' : 'opacity-40 pointer-events-none'}">
           <button
             type="button"
+            data-toggle-alive-id="${s.id}"
+            title="Alternar entre VIVO e MORTO (K.I.A.)"
+            class="min-h-[42px] px-2.5 rounded-lg font-black text-xs uppercase flex items-center gap-1 border transition ${
+              s.alive
+                ? 'bg-lime-500/15 hover:bg-lime-500/25 border-lime-400 text-lime-300'
+                : 'bg-red-950/70 hover:bg-red-900 border-red-600 text-red-300'
+            }"
+          >
+            ${s.alive ? '🛡️ VIVO' : '💀 K.I.A.'}
+          </button>
+          <button
+            type="button"
             data-switch-id="${s.id}"
             title="Transferir para outro time"
-            class="min-h-[42px] px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-amber-300 font-black text-xs uppercase flex items-center gap-1"
+            class="min-h-[42px] px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-amber-300 font-black text-xs uppercase flex items-center gap-1"
           >
-            ⇄ TROCAR
+            ⇄ TIME
           </button>
           <button
             type="button"
@@ -2588,6 +2600,11 @@ function renderRosterModal() {
       row.querySelector('[data-rank-cycle-id]').addEventListener('click', () => {
         if (!canModify) return;
         cycleSoldierRank(s.id);
+      });
+      row.querySelector('[data-toggle-alive-id]').addEventListener('click', () => {
+        if (!canModify) return;
+        toggleSoldierAliveInField(s.id);
+        renderRosterModal();
       });
       row.querySelector('[data-switch-id]').addEventListener('click', () => switchSoldierTeam(s.id));
       row.querySelector('[data-delete-id]').addEventListener('click', () => deleteSoldier(s.id));
