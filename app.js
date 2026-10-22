@@ -6,6 +6,12 @@
 
 const STORAGE_KEY = 'tactical_command_state_v2';
 const CLOUD_META_KEY = 'tactical_command_cloud_meta_v2';
+const LOCAL_USERS_KEY = 'tactical_command_users_v2';
+
+// Master Admin Credentials configured as requested
+const ADMIN_EMAIL = 'rodrigoebsilva@gmail.com';
+const ADMIN_PASS = 'Ebgdae87@@tac';
+const ADMIN_DEFAULT_NAME = 'RODRIGO (COMANDANTE ADM)';
 
 // Optional default Supabase credentials (can also be configured in the UI modal)
 const DEFAULT_SUPABASE_URL = 'https://aaqgxsjgalaqozwifgin.supabase.co';
@@ -24,11 +30,18 @@ const SQL_SETUP_SCRIPT = `-- Execute no SQL Editor do Supabase:
 create table if not exists public.tactical_sessions (
   code text primary key,
   host_id text not null,
+  owner_email text,
+  owner_name text,
+  is_online boolean not null default true,
   state jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+alter table public.tactical_sessions add column if not exists owner_email text;
+alter table public.tactical_sessions add column if not exists owner_name text;
+alter table public.tactical_sessions add column if not exists is_online boolean not null default true;
 alter table public.tactical_sessions enable row level security;
+drop policy if exists "Acesso publico total MVP" on public.tactical_sessions;
 create policy "Acesso publico total MVP" on public.tactical_sessions for all using (true) with check (true);
 alter publication supabase_realtime add table public.tactical_sessions;`;
 
@@ -71,7 +84,9 @@ function getDefaultCloudMeta() {
     sessionCode: null,
     role: 'LOCAL', // 'LOCAL' | 'HOST' | 'PLAYER'
     mySoldierId: null,
-    joinSelectedTeam: 'A'
+    joinSelectedTeam: 'A',
+    authUser: null, // { id, email, name, isAdmin }
+    myCreatedRooms: [] // [{ code, is_online, created_at, updated_at }]
   };
 }
 
@@ -397,6 +412,209 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ==========================================================================
+   AUTHENTICATION, ADMIN PRIVILEGE & SELF-REGISTRATION ENGINE
+   ========================================================================== */
+function getLocalUsers() {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocalUsers(users) {
+  try {
+    localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users));
+  } catch (e) {}
+}
+
+function getCurrentOwnerIdentifier() {
+  if (cloudMeta.authUser && cloudMeta.authUser.email) {
+    return cloudMeta.authUser.email.toLowerCase();
+  }
+  return cloudMeta.deviceId;
+}
+
+function isRoomCreator(roomRow) {
+  if (!roomRow) return false;
+  const userEmail = cloudMeta.authUser?.email?.toLowerCase();
+  if (userEmail && roomRow.owner_email && roomRow.owner_email.toLowerCase() === userEmail) {
+    return true;
+  }
+  return roomRow.host_id === cloudMeta.deviceId;
+}
+
+async function handleLogin(emailRaw, password) {
+  const email = (emailRaw || '').trim().toLowerCase();
+  if (!email || !password) {
+    showToast('⚠️', 'Preencha seu e-mail e senha!');
+    return;
+  }
+
+  // 1. Check Pre-configured Master Admin Account
+  if (email === ADMIN_EMAIL.toLowerCase()) {
+    if (password !== ADMIN_PASS) {
+      showToast('❌', 'Senha de Administrador incorreta!');
+      return;
+    }
+
+    cloudMeta.authUser = {
+      id: 'adm_master_rodrigo',
+      email: ADMIN_EMAIL.toLowerCase(),
+      name: ADMIN_DEFAULT_NAME,
+      isAdmin: true
+    };
+    saveCloudMeta();
+
+    // Sync with Supabase Auth in background if available
+    if (initSupabaseClient()) {
+      try {
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) {
+          await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: { data: { name: ADMIN_DEFAULT_NAME, role: 'admin' } }
+          });
+        }
+      } catch (e) {}
+    }
+
+    await fetchMyCreatedRooms();
+    renderAll();
+    renderAuthModal();
+    showToast('👑', 'Bem-vindo, Comandante Rodrigo (Administrador Master)!');
+    return;
+  }
+
+  // 2. Standard User Login (Supabase Auth + Local Fallback)
+  if (initSupabaseClient()) {
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (!error && data?.user) {
+        const metaName =
+          data.user.user_metadata?.name || email.split('@')[0].toUpperCase();
+        cloudMeta.authUser = {
+          id: data.user.id,
+          email,
+          name: metaName,
+          isAdmin: email === ADMIN_EMAIL.toLowerCase()
+        };
+        saveCloudMeta();
+        await fetchMyCreatedRooms();
+        renderAll();
+        renderAuthModal();
+        showToast('🔓', `Login realizado! Bem-vindo, ${metaName}.`);
+        return;
+      }
+    } catch (e) {}
+  }
+
+  // Check local self-registered users store
+  const users = getLocalUsers();
+  const found = users.find((u) => u.email.toLowerCase() === email && u.password === password);
+  if (!found) {
+    showToast('❌', 'E-mail ou senha inválidos! Caso não tenha conta, use a aba AUTO-CADASTRO.');
+    return;
+  }
+
+  cloudMeta.authUser = {
+    id: found.id,
+    email: found.email.toLowerCase(),
+    name: found.name,
+    isAdmin: found.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+  };
+  saveCloudMeta();
+  await fetchMyCreatedRooms();
+  renderAll();
+  renderAuthModal();
+  showToast('🔓', `Bem-vindo de volta, Operador ${found.name}!`);
+}
+
+async function handleSelfRegister(nameRaw, emailRaw, password) {
+  const name = (nameRaw || '').trim().toUpperCase();
+  const email = (emailRaw || '').trim().toLowerCase();
+
+  if (!name || !email || !password) {
+    showToast('⚠️', 'Preencha todos os campos para criar sua conta!');
+    return;
+  }
+
+  if (password.length < 6) {
+    showToast('⚠️', 'A senha deve ter pelo menos 6 caracteres.');
+    return;
+  }
+
+  if (email === ADMIN_EMAIL.toLowerCase() && password !== ADMIN_PASS) {
+    showToast('🔒', 'Este e-mail pertence ao Administrador Master. Use a aba Login com a senha ADM.');
+    return;
+  }
+
+  const users = getLocalUsers();
+  if (users.some((u) => u.email.toLowerCase() === email)) {
+    showToast('⚠️', 'Este e-mail já está cadastrado! Use a aba ENTRAR (LOGIN).');
+    return;
+  }
+
+  const isAdmin = email === ADMIN_EMAIL.toLowerCase();
+  const newUser = {
+    id: 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+    name,
+    email,
+    password,
+    isAdmin
+  };
+
+  users.push(newUser);
+  saveLocalUsers(users);
+
+  // Also register in Supabase Auth if available
+  if (initSupabaseClient()) {
+    try {
+      await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { name, role: isAdmin ? 'admin' : 'user' } }
+      });
+    } catch (e) {}
+  }
+
+  cloudMeta.authUser = {
+    id: newUser.id,
+    email: newUser.email,
+    name: newUser.name,
+    isAdmin
+  };
+  saveCloudMeta();
+
+  // Pre-fill operator name in Join Session input
+  const joinOpInput = document.getElementById('inputJoinOperatorName');
+  if (joinOpInput && !joinOpInput.value) {
+    joinOpInput.value = name;
+  }
+
+  await fetchMyCreatedRooms();
+  renderAll();
+  renderAuthModal();
+  showToast('✅', `Auto-cadastro concluído! Bem-vindo, ${name}.`);
+}
+
+async function handleLogout() {
+  if (supabaseClient) {
+    try {
+      await supabaseClient.auth.signOut();
+    } catch (e) {}
+  }
+  cloudMeta.authUser = null;
+  saveCloudMeta();
+  await fetchMyCreatedRooms();
+  renderAll();
+  renderAuthModal();
+  showToast('🚪', 'Você saiu da sua conta.');
+}
+
+/* ==========================================================================
    SUPABASE REALTIME CLOUD ENGINE (CREATE / JOIN / SYNC SESSIONS)
    ========================================================================== */
 function initSupabaseClient() {
@@ -415,9 +633,11 @@ function initSupabaseClient() {
   }
 
   try {
-    supabaseClient = window.supabase.createClient(url, key, {
-      realtime: { params: { eventsPerSecond: 10 } }
-    });
+    if (!supabaseClient) {
+      supabaseClient = window.supabase.createClient(url, key, {
+        realtime: { params: { eventsPerSecond: 10 } }
+      });
+    }
     if (statusBadge) {
       statusBadge.textContent = '🟢 PRONTO E CONECTADO';
       statusBadge.className =
@@ -447,7 +667,14 @@ function sanitizeSessionCode(raw) {
 }
 
 // Build serializable state payload for Supabase
-function buildCloudStatePayload() {
+function buildCloudStatePayload(isOnlineOverride = null) {
+  const currentOnline =
+    isOnlineOverride !== null
+      ? Boolean(isOnlineOverride)
+      : state.roomMeta?.isOnline !== undefined
+      ? Boolean(state.roomMeta.isOnline)
+      : true;
+
   return {
     teams: state.teams,
     soldiers: state.soldiers,
@@ -457,7 +684,13 @@ function buildCloudStatePayload() {
       prepSeconds: state.settings.prepSeconds
     },
     stats: state.stats,
-    liveTimer: state.liveTimer
+    liveTimer: state.liveTimer,
+    roomMeta: {
+      ownerEmail: cloudMeta.authUser?.email?.toLowerCase() || null,
+      ownerName: cloudMeta.authUser?.name || 'COMANDANTE',
+      ownerDeviceId: cloudMeta.deviceId,
+      isOnline: currentOnline
+    }
   };
 }
 
@@ -482,8 +715,172 @@ async function pushStateToCloud() {
   }, 80);
 }
 
-// Create a new session (or overwrite if same host)
+// Fetch rooms created exclusively by the current creator (other users cannot see them)
+async function fetchMyCreatedRooms() {
+  if (!initSupabaseClient()) return [];
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('tactical_sessions')
+      .select('code, host_id, state, updated_at, created_at')
+      .order('updated_at', { ascending: false });
+
+    if (error || !Array.isArray(data)) {
+      renderMyCreatedRoomsList();
+      return [];
+    }
+
+    const userEmail = cloudMeta.authUser?.email?.toLowerCase();
+    const myRooms = data
+      .filter((row) => {
+        const rowOwnerEmail = row.state?.roomMeta?.ownerEmail?.toLowerCase();
+        if (userEmail && rowOwnerEmail && rowOwnerEmail === userEmail) return true;
+        return row.host_id === cloudMeta.deviceId;
+      })
+      .map((row) => ({
+        code: row.code,
+        host_id: row.host_id,
+        isOnline: row.state?.roomMeta?.isOnline !== false,
+        updated_at: row.updated_at,
+        soldiersCount: Array.isArray(row.state?.soldiers) ? row.state.soldiers.length : 0,
+        matchesCount: row.state?.stats?.totalMatches || 0
+      }));
+
+    cloudMeta.myCreatedRooms = myRooms;
+    saveCloudMeta();
+    renderMyCreatedRoomsList();
+    return myRooms;
+  } catch (err) {
+    renderMyCreatedRoomsList();
+    return [];
+  }
+}
+
+// Toggle a created room between ONLINE and OFFLINE (Creator exclusive action)
+async function toggleMyRoomOnlineStatus(roomCode) {
+  if (!initSupabaseClient()) return;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('tactical_sessions')
+      .select('*')
+      .eq('code', roomCode)
+      .maybeSingle();
+
+    if (error || !data) {
+      showToast('❌', 'Sala não encontrada no banco.');
+      return;
+    }
+
+    const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
+    const userEmail = cloudMeta.authUser?.email?.toLowerCase();
+    const isOwner =
+      (userEmail && rowOwnerEmail === userEmail) || data.host_id === cloudMeta.deviceId;
+
+    if (!isOwner) {
+      showToast('🔒', 'Acesso negado: Apenas o criador da sala pode alterar o status Online/Offline!');
+      return;
+    }
+
+    const currentOnline = data.state?.roomMeta?.isOnline !== false;
+    const nextOnline = !currentOnline;
+
+    const updatedState = {
+      ...(data.state || {}),
+      roomMeta: {
+        ...(data.state?.roomMeta || {}),
+        isOnline: nextOnline
+      }
+    };
+
+    const { error: updErr } = await supabaseClient
+      .from('tactical_sessions')
+      .update({
+        state: updatedState,
+        updated_at: new Date().toISOString()
+      })
+      .eq('code', roomCode);
+
+    if (updErr) {
+      showToast('⚠️', 'Erro ao atualizar status da sala.');
+      return;
+    }
+
+    if (cloudMeta.sessionCode === roomCode) {
+      state.roomMeta = updatedState.roomMeta;
+      saveState(true);
+    }
+
+    await fetchMyCreatedRooms();
+    renderAll();
+    showToast(
+      nextOnline ? '🟢' : '🔴',
+      `Sala ${roomCode} agora está ${nextOnline ? 'ONLINE (Aberta)' : 'OFFLINE (Fechada)'}!`
+    );
+  } catch (err) {
+    showToast('⚠️', 'Falha ao alternar status da sala.');
+  }
+}
+
+// Delete a created room permanently (Creator exclusive action)
+async function deleteMyCreatedRoom(roomCode) {
+  if (!initSupabaseClient()) return;
+
+  const confirmed = window.confirm(
+    `CONFIRMAÇÃO TÁTICA:\nDeseja realmente EXCLUIR permanentemente a sala "${roomCode}" da nuvem?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const { data } = await supabaseClient
+      .from('tactical_sessions')
+      .select('code, host_id, state')
+      .eq('code', roomCode)
+      .maybeSingle();
+
+    if (!data) return;
+
+    const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
+    const userEmail = cloudMeta.authUser?.email?.toLowerCase();
+    const isOwner =
+      (userEmail && rowOwnerEmail === userEmail) || data.host_id === cloudMeta.deviceId;
+
+    if (!isOwner) {
+      showToast('🔒', 'Apenas o criador da sala pode excluí-la!');
+      return;
+    }
+
+    const { error } = await supabaseClient
+      .from('tactical_sessions')
+      .delete()
+      .eq('code', roomCode);
+
+    if (error) {
+      showToast('⚠️', 'Não foi possível excluir a sala.');
+      return;
+    }
+
+    if (cloudMeta.sessionCode === roomCode) {
+      leaveCloudSession();
+    }
+
+    await fetchMyCreatedRooms();
+    showToast('🗑️', `Sala ${roomCode} excluída permanentemente!`);
+  } catch (err) {
+    showToast('⚠️', 'Erro ao excluir sala.');
+  }
+}
+
+// Create a new session (or overwrite if same creator)
 async function createCloudSession() {
+  if (!cloudMeta.authUser) {
+    document.getElementById('modalCloudSession').classList.add('hidden');
+    renderAuthModal();
+    document.getElementById('modalAuth').classList.remove('hidden');
+    showToast('🔐', 'Faça login ou crie sua conta rápida para criar e gerenciar suas salas!');
+    return;
+  }
+
   if (!initSupabaseClient()) {
     document.getElementById('supabaseConfigAccordion').open = true;
     showToast('⚙️', 'Configure a URL e Anon Key do Supabase abaixo primeiro!');
@@ -496,21 +893,35 @@ async function createCloudSession() {
     document.getElementById('inputCreateSessionCode').value = inputCode;
   }
 
-  // Sync current timer state into liveTimer
   syncRuntimeToLiveTimer();
 
   try {
-    const payload = buildCloudStatePayload();
     const { data: existing } = await supabaseClient
       .from('tactical_sessions')
-      .select('code, host_id')
+      .select('code, host_id, state')
       .eq('code', inputCode)
       .maybeSingle();
 
-    if (existing && existing.host_id !== cloudMeta.deviceId) {
-      showToast('⚠️', `O código ${inputCode} já está em uso! Escolha outro ou clique em 🎲 GERAR.`);
-      return;
+    if (existing) {
+      const existingOwnerEmail = existing.state?.roomMeta?.ownerEmail?.toLowerCase();
+      const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
+      const isSameOwner =
+        (currentEmail && existingOwnerEmail === currentEmail) ||
+        existing.host_id === cloudMeta.deviceId;
+
+      if (!isSameOwner) {
+        showToast('⚠️', `O código ${inputCode} já pertence a outro criador! Clique em 🎲 GERAR.`);
+        return;
+      }
     }
+
+    state.roomMeta = {
+      ownerEmail: cloudMeta.authUser?.email?.toLowerCase() || null,
+      ownerName: cloudMeta.authUser?.name || 'COMANDANTE',
+      ownerDeviceId: cloudMeta.deviceId,
+      isOnline: true
+    };
+    const payload = buildCloudStatePayload(true);
 
     const { error } = await supabaseClient.from('tactical_sessions').upsert(
       {
@@ -533,11 +944,12 @@ async function createCloudSession() {
     cloudMeta.role = 'HOST';
     saveCloudMeta();
 
+    await fetchMyCreatedRooms();
     subscribeToCloudSession(inputCode);
     updateUrlRoomParam(inputCode);
     renderAll();
     renderCloudModal();
-    showToast('🚀', `Sessão ${inputCode} criada na nuvem! Compartilhe o código.`);
+    showToast('🚀', `Sessão ${inputCode} criada e ONLINE! Compartilhe o código.`);
   } catch (err) {
     console.error(err);
     showToast('⚠️', 'Erro de conexão com o Supabase.');
@@ -558,9 +970,12 @@ async function joinCloudSession() {
     return;
   }
 
-  const operatorName = (document.getElementById('inputJoinOperatorName').value || '')
+  let operatorName = (document.getElementById('inputJoinOperatorName').value || '')
     .trim()
     .toUpperCase();
+  if (!operatorName && cloudMeta.authUser?.name) {
+    operatorName = cloudMeta.authUser.name.toUpperCase();
+  }
   const chosenTeam = cloudMeta.joinSelectedTeam === 'B' ? 'B' : 'A';
 
   try {
@@ -575,8 +990,20 @@ async function joinCloudSession() {
       return;
     }
 
+    const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
+    const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
+    const isCreator =
+      (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
+      data.host_id === cloudMeta.deviceId;
+
+    const isRoomOnline = data.state?.roomMeta?.isOnline !== false;
+    if (!isRoomOnline && !isCreator) {
+      showToast('🔴', `A sala "${code}" está OFFLINE no momento (desativada pelo criador).`);
+      return;
+    }
+
     cloudMeta.sessionCode = code;
-    cloudMeta.role = data.host_id === cloudMeta.deviceId ? 'HOST' : 'PLAYER';
+    cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
 
     // Apply fetched room state
     applyRemoteCloudState(data.state);
@@ -604,7 +1031,7 @@ async function joinCloudSession() {
 
       syncAliveCountFromRoster('A');
       syncAliveCountFromRoster('B');
-      saveState(false); // Pushes new operator to Supabase immediately
+      saveState(false);
     }
 
     saveCloudMeta();
@@ -639,13 +1066,24 @@ function subscribeToCloudSession(code) {
     .on(
       'postgres_changes',
       {
-        event: 'UPDATE',
+        event: '*',
         schema: 'public',
         table: 'tactical_sessions',
         filter: `code=eq.${code}`
       },
       (payload) => {
+        if (payload.eventType === 'DELETE') {
+          showToast('🗑️', `A sala ${code} foi encerrada e excluída pelo criador.`);
+          leaveCloudSession();
+          return;
+        }
         if (payload.new && payload.new.state) {
+          const isOnline = payload.new.state?.roomMeta?.isOnline !== false;
+          if (!isOnline && cloudMeta.role !== 'HOST') {
+            showToast('🔴', `O criador colocou a sala ${code} em modo OFFLINE.`);
+            leaveCloudSession();
+            return;
+          }
           applyRemoteCloudState(payload.new.state);
         }
       }
@@ -1513,12 +1951,179 @@ function renderCloudStatusAndPlayerHud() {
   }
 }
 
+function renderHeaderAuthButton() {
+  const icon = document.getElementById('headerUserIcon');
+  const nameEl = document.getElementById('headerUserName');
+  const roleBadge = document.getElementById('headerUserRoleBadge');
+  const btn = document.getElementById('btnOpenAuthModal');
+
+  if (!btn) return;
+
+  if (cloudMeta.authUser) {
+    icon.textContent = cloudMeta.authUser.isAdmin ? '👑' : '🪖';
+    nameEl.textContent = cloudMeta.authUser.name;
+    roleBadge.classList.remove('hidden');
+    if (cloudMeta.authUser.isAdmin) {
+      roleBadge.textContent = 'ADM';
+      roleBadge.className =
+        'px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black';
+      btn.className =
+        'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border-2 border-amber-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+    } else {
+      roleBadge.textContent = 'OPERADOR';
+      roleBadge.className =
+        'px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-sky-400 text-zinc-950 font-black';
+      btn.className =
+        'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-900 hover:bg-zinc-800 active:scale-95 border-2 border-sky-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+    }
+  } else {
+    icon.textContent = '🔐';
+    nameEl.textContent = 'ENTRAR / CONTA';
+    roleBadge.classList.add('hidden');
+    btn.className =
+      'flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition';
+  }
+}
+
+function renderAuthModal() {
+  const loggedInView = document.getElementById('authLoggedInView');
+  const loggedOutView = document.getElementById('authLoggedOutView');
+  if (!loggedInView || !loggedOutView) return;
+
+  if (cloudMeta.authUser) {
+    loggedInView.classList.remove('hidden');
+    loggedOutView.classList.add('hidden');
+
+    document.getElementById('authProfileName').textContent = cloudMeta.authUser.name;
+    document.getElementById('authProfileEmail').textContent = cloudMeta.authUser.email;
+
+    const badge = document.getElementById('authProfileRoleBadge');
+    if (cloudMeta.authUser.isAdmin) {
+      badge.textContent = '👑 ADMINISTRADOR MASTER (ADM)';
+      badge.className =
+        'inline-block px-2.5 py-0.5 rounded bg-amber-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase';
+    } else {
+      badge.textContent = '🪖 OPERADOR CADASTRADO';
+      badge.className =
+        'inline-block px-2.5 py-0.5 rounded bg-sky-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase';
+    }
+  } else {
+    loggedInView.classList.add('hidden');
+    loggedOutView.classList.remove('hidden');
+  }
+}
+
+function renderMyCreatedRoomsList() {
+  const container = document.getElementById('myCreatedRoomsList');
+  if (!container) return;
+
+  const rooms = cloudMeta.myCreatedRooms || [];
+  container.innerHTML = '';
+
+  if (rooms.length === 0) {
+    container.innerHTML = `
+      <div class="py-5 px-4 rounded-xl border border-dashed border-zinc-800 text-center text-xs text-zinc-500">
+        Nenhuma sala criada por você ainda. Crie uma sessão acima para gerenciá-la exclusivamente aqui!
+      </div>
+    `;
+    return;
+  }
+
+  rooms.forEach((rm) => {
+    const isCurrent = cloudMeta.sessionCode === rm.code;
+    const row = document.createElement('div');
+    row.className = `flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-xl border ${
+      isCurrent
+        ? 'bg-zinc-900 border-lime-400/80'
+        : 'bg-zinc-900/70 border-zinc-800'
+    }`;
+
+    row.innerHTML = `
+      <div class="flex items-center gap-3">
+        <span class="px-2.5 py-1 rounded-lg font-tactical-mono font-black text-sm ${
+          rm.isOnline
+            ? 'bg-lime-400/15 text-lime-400 border border-lime-400/40'
+            : 'bg-red-500/15 text-red-400 border border-red-500/40'
+        }">
+          #${escapeHtml(rm.code)}
+        </span>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black uppercase ${
+              rm.isOnline ? 'text-lime-400' : 'text-red-400'
+            }">
+              ${rm.isOnline ? '🟢 SALA ONLINE' : '🔴 SALA OFFLINE'}
+            </span>
+            ${
+              isCurrent
+                ? '<span class="text-[10px] font-tactical-mono px-1.5 py-0.5 rounded bg-sky-400 text-zinc-950 font-black">CONECTADO</span>'
+                : ''
+            }
+          </div>
+          <span class="text-[11px] text-zinc-400 font-tactical-mono">
+            ${rm.soldiersCount} operadores • ${rm.matchesCount} partidas
+          </span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <button
+          type="button"
+          data-open-room="${escapeHtml(rm.code)}"
+          class="min-h-[40px] px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400 text-sky-300 font-black text-xs uppercase"
+          title="Assumir Comando da Sala"
+        >
+          👑 COMANDAR
+        </button>
+        <button
+          type="button"
+          data-toggle-online="${escapeHtml(rm.code)}"
+          class="min-h-[40px] px-3 rounded-lg font-black text-xs uppercase border ${
+            rm.isOnline
+              ? 'bg-amber-500/20 hover:bg-amber-500/35 border-amber-400 text-amber-300'
+              : 'bg-lime-500/20 hover:bg-lime-500/35 border-lime-400 text-lime-300'
+          }"
+          title="Alternar entre Online e Offline"
+        >
+          ${rm.isOnline ? '⏸️ DEIXAR OFF' : '🟢 DEIXAR ONLINE'}
+        </button>
+        <button
+          type="button"
+          data-delete-room="${escapeHtml(rm.code)}"
+          class="min-h-[40px] px-3 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-700 text-red-300 font-black text-xs uppercase"
+          title="Excluir sala permanentemente"
+        >
+          🗑️ EXCLUIR
+        </button>
+      </div>
+    `;
+
+    row.querySelector('[data-open-room]').addEventListener('click', () => {
+      document.getElementById('inputJoinSessionCode').value = rm.code;
+      joinCloudSession();
+    });
+    row.querySelector('[data-toggle-online]').addEventListener('click', () => {
+      toggleMyRoomOnlineStatus(rm.code);
+    });
+    row.querySelector('[data-delete-room]').addEventListener('click', () => {
+      deleteMyCreatedRoom(rm.code);
+    });
+
+    container.appendChild(row);
+  });
+}
+
 function renderCloudModal() {
   const activeBox = document.getElementById('cloudActiveRoomBox');
-  const joinCreateGrid = document.getElementById('cloudJoinCreateGrid');
 
   document.getElementById('inputSupabaseUrl').value = cloudMeta.supabaseUrl || '';
   document.getElementById('inputSupabaseKey').value = cloudMeta.supabaseKey || '';
+
+  // Pre-fill operator name if logged in
+  const opInput = document.getElementById('inputJoinOperatorName');
+  if (opInput && !opInput.value && cloudMeta.authUser?.name) {
+    opInput.value = cloudMeta.authUser.name;
+  }
 
   // Update team button labels in Join card
   const btnJoinA = document.getElementById('btnSelectJoinTeamA');
@@ -1542,12 +2147,13 @@ function renderCloudModal() {
     activeBox.classList.remove('hidden');
     document.getElementById('cloudModalRoomCode').textContent = cloudMeta.sessionCode;
     document.getElementById('cloudModalRoleBadge').textContent =
-      cloudMeta.role === 'HOST' ? '👑 JUIZ (ANFITRIÃO)' : '🪖 OPERADOR CONECTADO';
+      cloudMeta.role === 'HOST' ? '👑 JUIZ (CRIADOR)' : '🪖 OPERADOR CONECTADO';
   } else {
     activeBox.classList.add('hidden');
   }
 
   initSupabaseClient();
+  fetchMyCreatedRooms();
 }
 
 function renderColorPickers() {
@@ -1981,6 +2587,7 @@ function renderReportModal() {
 }
 
 function renderAll() {
+  renderHeaderAuthButton();
   renderCloudStatusAndPlayerHud();
   renderColorPickers();
   renderTeamPanels();
@@ -2345,6 +2952,68 @@ function bindEvents() {
   document.getElementById('btnOpenHelp').addEventListener('click', openHelp);
   document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
   document.getElementById('btnDoneHelp').addEventListener('click', closeHelp);
+
+  // Auth / Login / Self-Registration Modal Controls
+  const openAuthModal = () => {
+    renderAuthModal();
+    document.getElementById('modalAuth').classList.remove('hidden');
+  };
+  const closeAuthModal = () => {
+    document.getElementById('modalAuth').classList.add('hidden');
+  };
+
+  document.getElementById('btnOpenAuthModal').addEventListener('click', openAuthModal);
+  document.getElementById('btnCloseAuthModal').addEventListener('click', closeAuthModal);
+
+  const tabLogin = document.getElementById('tabAuthLogin');
+  const tabRegister = document.getElementById('tabAuthRegister');
+  const formLogin = document.getElementById('formAuthLogin');
+  const formRegister = document.getElementById('formAuthRegister');
+
+  tabLogin.addEventListener('click', () => {
+    tabLogin.className =
+      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-lime-400 text-zinc-950 transition';
+    tabRegister.className =
+      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition';
+    formLogin.classList.remove('hidden');
+    formRegister.classList.add('hidden');
+  });
+
+  tabRegister.addEventListener('click', () => {
+    tabRegister.className =
+      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-sky-400 text-zinc-950 transition';
+    tabLogin.className =
+      'min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition';
+    formRegister.classList.remove('hidden');
+    formLogin.classList.add('hidden');
+  });
+
+  formLogin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('inputLoginEmail').value;
+    const pass = document.getElementById('inputLoginPassword').value;
+    await handleLogin(email, pass);
+  });
+
+  formRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('inputRegName').value;
+    const email = document.getElementById('inputRegEmail').value;
+    const pass = document.getElementById('inputRegPassword').value;
+    await handleSelfRegister(name, email, pass);
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', handleLogout);
+  document.getElementById('btnOpenMyRoomsFromAuth').addEventListener('click', () => {
+    closeAuthModal();
+    renderCloudModal();
+    document.getElementById('modalCloudSession').classList.remove('hidden');
+  });
+
+  document.getElementById('btnRefreshMyRooms').addEventListener('click', () => {
+    fetchMyCreatedRooms();
+    showToast('🔄', 'Lista das suas salas atualizada!');
+  });
 }
 
 // Reconnect to active session or URL ?room=CODE parameter on boot
@@ -2374,7 +3043,19 @@ async function checkInitialCloudSession() {
         .maybeSingle();
 
       if (data && data.state) {
-        cloudMeta.role = data.host_id === cloudMeta.deviceId ? 'HOST' : 'PLAYER';
+        const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
+        const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
+        const isCreator =
+          (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
+          data.host_id === cloudMeta.deviceId;
+
+        const isOnline = data.state?.roomMeta?.isOnline !== false;
+        if (!isOnline && !isCreator) {
+          leaveCloudSession();
+          return;
+        }
+
+        cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
         saveCloudMeta();
         applyRemoteCloudState(data.state);
         subscribeToCloudSession(cloudMeta.sessionCode);

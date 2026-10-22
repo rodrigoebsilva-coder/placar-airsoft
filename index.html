@@ -85,6 +85,13 @@
           📲 INSTALAR APP
         </button>
 
+        <!-- AUTH / LOGIN PROFILE BUTTON -->
+        <button id="btnOpenAuthModal" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border-2 border-lime-400/70 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
+          <span id="headerUserIcon">🔐</span>
+          <span id="headerUserName">ENTRAR / CONTA</span>
+          <span id="headerUserRoleBadge" class="hidden px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-amber-400 text-zinc-950 font-black">ADM</span>
+        </button>
+
         <!-- CLOUD MULTIPLAYER SESSION BUTTON -->
         <button id="btnOpenCloudSession" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-sky-500/20 hover:bg-sky-500/30 active:scale-95 border-2 border-sky-400/80 text-sky-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-[0_0_18px_rgba(56,189,248,0.2)]">
           <span>☁️ SESSÃO ONLINE</span>
@@ -728,6 +735,31 @@
 
         </div>
 
+        <!-- MY CREATED SESSIONS MANAGEMENT PANEL (EXCLUSIVE TO ROOM CREATOR) -->
+        <div class="bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-4 sm:p-5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+            <div>
+              <h3 class="text-sm sm:text-base font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                <span>🔒 MINHAS SALAS CRIADAS (CONTROLE EXCLUSIVO DO CRIADOR)</span>
+              </h3>
+              <p class="text-xs text-zinc-400">
+                Apenas você pode visualizar suas salas criadas, deixá-las <strong class="text-lime-400">ONLINE</strong> / <strong class="text-red-400">OFFLINE</strong> ou <strong>EXCLUIR</strong>.
+              </p>
+            </div>
+            <button
+              id="btnRefreshMyRooms"
+              type="button"
+              class="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase"
+            >
+              🔄 ATUALIZAR
+            </button>
+          </div>
+
+          <div id="myCreatedRoomsList" class="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
         <!-- SUPABASE CREDENTIALS CONFIGURATION ACCORDION -->
         <details id="supabaseConfigAccordion" class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 group">
           <summary class="cursor-pointer font-extrabold text-xs sm:text-sm uppercase tracking-wider text-amber-400 flex items-center justify-between">
@@ -1264,6 +1296,188 @@
         <button id="btnDoneHelp" type="button" class="btn-tactical min-h-[52px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black">
           ✅ ENTENDIDO, PRONTO PARA COMBATE!
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 5: ÁREA DE LOGIN, AUTO-CADASTRO E PERFIL (AUTH MODAL)             -->
+  <!-- ======================================================================= -->
+  <div id="modalAuth" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-lime-400/80 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_0_50px_rgba(163,230,53,0.25)] my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🔐</span>
+          <div>
+            <h2 class="text-lg font-black uppercase tracking-wider text-white">
+              CREDENCIAIS DE OPERADOR
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Acesso administrativo, login e auto-cadastro de participantes
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseAuthModal" type="button" class="min-h-[44px] min-w-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-5">
+
+        <!-- LOGGED IN VIEW -->
+        <div id="authLoggedInView" class="hidden space-y-4">
+          <div class="bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-4 text-center space-y-2">
+            <div class="w-16 h-16 rounded-2xl bg-lime-400/15 border-2 border-lime-400 mx-auto flex items-center justify-center text-3xl">
+              🪖
+            </div>
+            <div>
+              <span id="authProfileRoleBadge" class="inline-block px-2.5 py-0.5 rounded bg-amber-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase">
+                👑 ADMINISTRADOR MASTER
+              </span>
+              <h3 id="authProfileName" class="text-xl font-black uppercase text-white mt-1">
+                RODRIGO EVANGELISTA
+              </h3>
+              <p id="authProfileEmail" class="text-xs font-tactical-mono text-zinc-400">
+                rodrigoebsilva@gmail.com
+              </p>
+            </div>
+          </div>
+
+          <div class="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 space-y-1">
+            <p>✅ <strong>Permissões da Conta:</strong></p>
+            <p id="authProfilePermissionsText" class="text-zinc-400">
+              Você pode criar sessões na nuvem, gerenciar exclusivamente o status Online/Offline ou excluir suas salas criadas, e participar de combates.
+            </p>
+          </div>
+
+          <div class="flex gap-2">
+            <button
+              id="btnOpenMyRoomsFromAuth"
+              type="button"
+              class="flex-1 btn-tactical min-h-[52px] bg-sky-500 hover:bg-sky-400 text-zinc-950 text-xs font-black"
+            >
+              ☁️ GERENCIAR MINHAS SALAS
+            </button>
+            <button
+              id="btnLogout"
+              type="button"
+              class="btn-tactical min-h-[52px] px-4 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-xs font-black"
+            >
+              🚪 SAIR
+            </button>
+          </div>
+        </div>
+
+        <!-- LOGGED OUT VIEW (LOGIN / AUTO-CADASTRO TABS) -->
+        <div id="authLoggedOutView" class="space-y-4">
+          <!-- Mode Switch Tabs -->
+          <div class="grid grid-cols-2 gap-2 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
+            <button
+              id="tabAuthLogin"
+              type="button"
+              class="min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-lime-400 text-zinc-950 transition"
+            >
+              🔑 ENTRAR (LOGIN)
+            </button>
+            <button
+              id="tabAuthRegister"
+              type="button"
+              class="min-h-[44px] rounded-lg font-black text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition"
+            >
+              📝 AUTO-CADASTRO
+            </button>
+          </div>
+
+          <!-- LOGIN FORM -->
+          <form id="formAuthLogin" class="space-y-3">
+            <div>
+              <label for="inputLoginEmail" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                E-MAIL DO OPERADOR
+              </label>
+              <input
+                id="inputLoginEmail"
+                type="email"
+                required
+                placeholder="seu-email@exemplo.com"
+                class="w-full min-h-[50px] bg-zinc-950 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="inputLoginPassword" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                SENHA DE ACESSO
+              </label>
+              <input
+                id="inputLoginPassword"
+                type="password"
+                required
+                placeholder="••••••••••••"
+                class="w-full min-h-[50px] bg-zinc-950 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              class="w-full btn-tactical min-h-[56px] bg-lime-400 hover:bg-lime-300 text-zinc-950 text-sm font-black shadow-[0_0_20px_rgba(163,230,53,0.35)]"
+            >
+              🔓 ACESSAR SISTEMA
+            </button>
+          </form>
+
+          <!-- SELF-REGISTRATION FORM (AUTO-CADASTRO) -->
+          <form id="formAuthRegister" class="hidden space-y-3">
+            <div>
+              <label for="inputRegName" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                NOME / CODINOME TÁTICO
+              </label>
+              <input
+                id="inputRegName"
+                type="text"
+                maxlength="22"
+                required
+                placeholder="Ex: GHOST, FALCÃO, VIPER..."
+                class="w-full min-h-[50px] bg-zinc-950 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 text-sm font-bold uppercase text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="inputRegEmail" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                SEU E-MAIL
+              </label>
+              <input
+                id="inputRegEmail"
+                type="email"
+                required
+                placeholder="seu-email@exemplo.com"
+                class="w-full min-h-[50px] bg-zinc-950 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="inputRegPassword" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                CRIE UMA SENHA (MÍN. 6 CARACTERES)
+              </label>
+              <input
+                id="inputRegPassword"
+                type="password"
+                minlength="6"
+                required
+                placeholder="••••••••••••"
+                class="w-full min-h-[50px] bg-zinc-950 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 text-sm font-semibold text-white outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              class="w-full btn-tactical min-h-[56px] bg-sky-400 hover:bg-sky-300 text-zinc-950 text-sm font-black shadow-[0_0_20px_rgba(56,189,248,0.35)]"
+            >
+              📝 CRIAR CONTA E ENTRAR
+            </button>
+          </form>
+        </div>
+
       </div>
     </div>
   </div>
