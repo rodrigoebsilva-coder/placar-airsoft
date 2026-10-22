@@ -638,21 +638,22 @@
                   <label for="inputCreateSessionCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
                     CÓDIGO DA SESSÃO (MANUAL OU AUTOMÁTICO)
                   </label>
-                  <div class="flex gap-2">
+                  <div class="flex items-stretch gap-2 w-full">
                     <input
                       id="inputCreateSessionCode"
                       type="text"
                       maxlength="16"
                       placeholder="Ex: TACTICAL-77"
-                      class="flex-1 min-h-[52px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
+                      class="w-full min-w-0 flex-1 min-h-[52px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-3 font-tactical-mono text-base sm:text-lg font-black uppercase tracking-wider text-white outline-none"
                     />
                     <button
                       id="btnGenerateRandomCode"
                       type="button"
-                      class="px-3.5 min-h-[52px] rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-amber-400 font-black text-xs uppercase"
+                      class="shrink-0 px-3.5 min-h-[52px] rounded-xl bg-zinc-800 hover:bg-zinc-700 active:scale-95 border border-zinc-600 text-amber-400 font-black text-xs uppercase flex items-center justify-center gap-1 whitespace-nowrap"
                       title="Gerar Código Aleatório"
                     >
-                      🎲 GERAR
+                      <span>🎲</span>
+                      <span>GERAR</span>
                     </button>
                   </div>
                 </div>
