@@ -732,7 +732,36 @@
 
               <div>
                 <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                  3. ESCOLHA SEU ESQUADRÃO:
+                  3. SEU NÍVEL DE COMBATE:
+                </span>
+                <div class="grid grid-cols-3 gap-1.5" data-rank-group="cloudJoin">
+                  <button
+                    type="button"
+                    data-rank-select="RECRUTA"
+                    class="min-h-[42px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-[11px] uppercase tracking-wider transition"
+                  >
+                    🔰 RECRUTA
+                  </button>
+                  <button
+                    type="button"
+                    data-rank-select="EXPERIENTE"
+                    class="min-h-[42px] rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-black text-[11px] uppercase tracking-wider transition"
+                  >
+                    🎖️ EXPERIENTE
+                  </button>
+                  <button
+                    type="button"
+                    data-rank-select="MATADOR"
+                    class="min-h-[42px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-[11px] uppercase tracking-wider transition"
+                  >
+                    💀 MATADOR
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                  4. ESCOLHA SEU ESQUADRÃO:
                 </span>
                 <div class="grid grid-cols-2 gap-2">
                   <button
@@ -879,37 +908,68 @@
       <!-- Modal Content -->
       <div class="p-4 sm:p-6 space-y-5 max-h-[82dvh] overflow-y-auto">
         <!-- Add Soldier Form -->
-        <form id="formAddSoldier" class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-stretch">
-          <div class="flex-1">
-            <label for="inputSoldierName" class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-              NOME / CODINOME DO OPERADOR
-            </label>
-            <input
-              id="inputSoldierName"
-              type="text"
-              maxlength="24"
-              placeholder="Ex: GHOST, CAP. NASCIMENTO, VIPER..."
-              class="w-full min-h-[56px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-4 text-base sm:text-lg font-bold uppercase text-white outline-none"
-              required
-            />
+        <form id="formAddSoldier" class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label for="inputSoldierName" class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                1. NOME / CODINOME DO OPERADOR
+              </label>
+              <input
+                id="inputSoldierName"
+                type="text"
+                maxlength="24"
+                placeholder="Ex: GHOST, CAP. NASCIMENTO, VIPER..."
+                class="w-full min-h-[54px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-4 text-base sm:text-lg font-bold uppercase text-white outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                2. NÍVEL DO OPERADOR (PATENTE):
+              </span>
+              <div class="grid grid-cols-3 gap-2" data-rank-group="rosterModal">
+                <button
+                  type="button"
+                  data-rank-select="RECRUTA"
+                  class="min-h-[54px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider transition flex flex-col items-center justify-center"
+                >
+                  <span>🔰 RECRUTA</span>
+                </button>
+                <button
+                  type="button"
+                  data-rank-select="EXPERIENTE"
+                  class="min-h-[54px] rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-black text-xs uppercase tracking-wider transition flex flex-col items-center justify-center"
+                >
+                  <span>🎖️ EXPERIENTE</span>
+                </button>
+                <button
+                  type="button"
+                  data-rank-select="MATADOR"
+                  class="min-h-[54px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider transition flex flex-col items-center justify-center"
+                >
+                  <span>💀 MATADOR</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div class="flex sm:flex-col justify-end gap-2 sm:w-auto">
-            <span class="hidden sm:block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-0.5">
-              ALISTAR NO ESQUADRÃO:
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-zinc-800/80">
+            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">
+              3. ALISTAR NO ESQUADRÃO:
             </span>
-            <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
+            <div class="grid grid-cols-2 gap-2.5 w-full sm:w-auto sm:min-w-[320px]">
               <button
                 type="button"
                 id="btnAddToTeamA"
-                class="btn-tactical min-h-[56px] px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-black"
+                class="btn-tactical min-h-[54px] px-5 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-black"
               >
                 + <span id="lblRosterBtnTeamA">ALPHA</span>
               </button>
               <button
                 type="button"
                 id="btnAddToTeamB"
-                class="btn-tactical min-h-[56px] px-4 bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-black"
+                class="btn-tactical min-h-[54px] px-5 bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-black"
               >
                 + <span id="lblRosterBtnTeamB">BRAVO</span>
               </button>
@@ -1330,25 +1390,26 @@
   </div>
 
   <!-- ======================================================================= -->
-  <!-- MODAL 5: CENTRAL DE ACESSO TÁTICO (ENTRAR EM SALA / LOGIN / CADASTRO)   -->
+  <!-- TELA PRINCIPAL DE LOGIN / CENTRAL DE ACESSO TÁTICO (PORTAL DE ENTRADA)  -->
   <!-- ======================================================================= -->
-  <div id="modalAuth" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+  <div id="modalAuth" class="fixed inset-0 z-50 bg-zinc-950/95 tactical-bg backdrop-blur-md overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
     <div class="bg-zinc-900 border-2 border-lime-400/80 rounded-2xl w-full max-w-lg overflow-hidden shadow-[0_0_50px_rgba(163,230,53,0.25)] my-auto">
       <!-- Header -->
       <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5">
-          <span class="text-2xl">🔐</span>
+        <div class="flex items-center gap-3">
+          <img src="./icon.svg" alt="Tactical Command" class="w-11 h-11 rounded-xl border border-lime-400/60" />
           <div>
-            <h2 class="text-lg font-black uppercase tracking-wider text-white">
-              CENTRAL DE ACESSO TÁTICO
+            <h2 class="text-base sm:text-lg font-black uppercase tracking-wider text-white">
+              TACTICAL COMMAND — PORTAL DE ACESSO
             </h2>
             <p class="text-xs text-zinc-400">
               Entre em uma sala existente como Soldado ou faça Login para Criar Salas
             </p>
           </div>
         </div>
-        <button id="btnCloseAuthModal" type="button" class="min-h-[44px] min-w-[44px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
-          ✕
+        <button id="btnCloseAuthModal" type="button" title="Ir para o Placar Local Offline" class="min-h-[44px] px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 font-black text-xs uppercase flex items-center justify-center gap-1">
+          <span>PLACAR</span>
+          <span>✕</span>
         </button>
       </div>
 
@@ -1381,18 +1442,25 @@
             </p>
           </div>
 
-          <div class="flex gap-2">
+          <div class="flex flex-col sm:flex-row gap-2">
             <button
               id="btnOpenMyRoomsFromAuth"
               type="button"
-              class="flex-1 btn-tactical min-h-[52px] bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black"
+              class="flex-1 btn-tactical min-h-[54px] bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black"
             >
-              🚀 CRIAR / GERENCIAR MINHAS SALAS
+              🚀 CRIAR / GERENCIAR SALAS
+            </button>
+            <button
+              id="btnEnterMainPanelFromAuth"
+              type="button"
+              class="btn-tactical min-h-[54px] px-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white text-xs font-black"
+            >
+              🎯 ABRIR PLACAR
             </button>
             <button
               id="btnLogout"
               type="button"
-              class="btn-tactical min-h-[52px] px-4 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-xs font-black"
+              class="btn-tactical min-h-[54px] px-4 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-xs font-black"
             >
               🚪 SAIR
             </button>
@@ -1404,18 +1472,18 @@
           <!-- Mode Switch Tabs -->
           <div class="grid grid-cols-3 gap-1.5 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
             <button
-              id="tabAuthQuickJoin"
+              id="tabAuthLogin"
               type="button"
-              class="min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-amber-400 text-zinc-950 transition px-1"
+              class="min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-lime-400 text-zinc-950 transition px-1"
             >
-              🪖 ENTRAR EM SALA
+              🔑 LOGIN (CRIAR)
             </button>
             <button
-              id="tabAuthLogin"
+              id="tabAuthQuickJoin"
               type="button"
               class="min-h-[46px] rounded-lg font-black text-[11px] sm:text-xs uppercase tracking-wider bg-zinc-900 text-zinc-300 hover:text-white transition px-1"
             >
-              🔑 LOGIN (CRIAR)
+              🪖 ENTRAR EM SALA
             </button>
             <button
               id="tabAuthRegister"
@@ -1426,84 +1494,8 @@
             </button>
           </div>
 
-          <!-- TAB 1: SOLDADO ENTRAR EM SALA EXISTENTE (SEM LOGIN / SEM CRIAR SALA) -->
-          <form id="formAuthQuickJoin" class="space-y-3.5 bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
-            <div class="flex items-center justify-between border-b border-zinc-800 pb-2.5">
-              <div>
-                <span class="text-[10px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded bg-amber-400/20 text-amber-300">
-                  ACESSO DIRETO DO SOLDADO
-                </span>
-                <h3 class="text-sm sm:text-base font-black uppercase text-white mt-1">
-                  ENTRAR EM SALA JÁ CRIADA
-                </h3>
-              </div>
-              <span class="text-2xl">📲</span>
-            </div>
-
-            <div>
-              <label for="inputAuthJoinCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                1. CÓDIGO DA SALA EXISTENTE
-              </label>
-              <input
-                id="inputAuthJoinCode"
-                type="text"
-                maxlength="16"
-                required
-                placeholder="Ex: ALPHA-42, DOMINGO..."
-                class="w-full min-h-[52px] bg-zinc-900 border-2 border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
-              />
-            </div>
-
-            <div>
-              <label for="inputAuthJoinName" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                2. SEU NOME / CODINOME DE OPERADOR
-              </label>
-              <input
-                id="inputAuthJoinName"
-                type="text"
-                maxlength="22"
-                required
-                placeholder="Ex: GHOST, SNIPER, FALCÃO..."
-                class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 text-base font-bold uppercase text-white outline-none"
-              />
-            </div>
-
-            <div>
-              <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
-                3. ESCOLHA SEU ESQUADRÃO:
-              </span>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  id="btnAuthJoinTeamA"
-                  type="button"
-                  class="min-h-[46px] rounded-xl border-2 border-blue-500 bg-blue-600/25 text-white font-black text-xs uppercase tracking-wider"
-                >
-                  🛡️ TIME A (ALPHA)
-                </button>
-                <button
-                  id="btnAuthJoinTeamB"
-                  type="button"
-                  class="min-h-[46px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider"
-                >
-                  ⚔️ TIME B (BRAVO)
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              class="w-full btn-tactical min-h-[58px] bg-amber-400 hover:bg-amber-300 text-zinc-950 text-sm sm:text-base font-black shadow-[0_0_25px_rgba(245,158,11,0.35)]"
-            >
-              🪖 ENTRAR NA SALA COMO SOLDADO
-            </button>
-
-            <p class="text-[11px] text-zinc-400 text-center pt-1">
-              🔒 <em>Soldados convidados não podem criar salas. Para criar salas, use a aba <strong>🔑 LOGIN</strong> ou <strong>📝 AUTO-CADASTRO</strong> acima.</em>
-            </p>
-          </form>
-
-          <!-- TAB 2: LOGIN FORM (PARA CRIADORES DE SALA & ADM) -->
-          <form id="formAuthLogin" class="hidden space-y-3 bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
+          <!-- TAB 1: LOGIN FORM (PADRÃO NA TELA PRINCIPAL PARA CRIADORES DE SALA & ADM) -->
+          <form id="formAuthLogin" class="space-y-3 bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
             <div class="border-b border-zinc-800 pb-2 mb-2">
               <span class="text-[10px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded bg-lime-400/20 text-lime-300">
                 HABILITA CRIAÇÃO DE SALAS
@@ -1545,6 +1537,111 @@
             >
               🔓 ENTRAR E LIBERAR CRIAÇÃO DE SALAS
             </button>
+          </form>
+
+          <!-- TAB 2: SOLDADO ENTRAR EM SALA EXISTENTE (SEM LOGIN / SEM CRIAR SALA) -->
+          <form id="formAuthQuickJoin" class="hidden space-y-3 bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <div>
+                <span class="text-[10px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded bg-amber-400/20 text-amber-300">
+                  ACESSO DIRETO DO SOLDADO
+                </span>
+                <h3 class="text-sm sm:text-base font-black uppercase text-white mt-1">
+                  ENTRAR EM SALA JÁ CRIADA
+                </h3>
+              </div>
+              <span class="text-2xl">📲</span>
+            </div>
+
+            <div>
+              <label for="inputAuthJoinCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                1. CÓDIGO DA SALA EXISTENTE
+              </label>
+              <input
+                id="inputAuthJoinCode"
+                type="text"
+                maxlength="16"
+                required
+                placeholder="Ex: ALPHA-42, DOMINGO..."
+                class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <label for="inputAuthJoinName" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                2. SEU NOME / CODINOME DE OPERADOR
+              </label>
+              <input
+                id="inputAuthJoinName"
+                type="text"
+                maxlength="22"
+                required
+                placeholder="Ex: GHOST, SNIPER, FALCÃO..."
+                class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 text-base font-bold uppercase text-white outline-none"
+              />
+            </div>
+
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                3. SEU NÍVEL DE COMBATE:
+              </span>
+              <div class="grid grid-cols-3 gap-1.5" data-rank-group="authJoin">
+                <button
+                  type="button"
+                  data-rank-select="RECRUTA"
+                  class="min-h-[42px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-[11px] uppercase tracking-wider transition"
+                >
+                  🔰 RECRUTA
+                </button>
+                <button
+                  type="button"
+                  data-rank-select="EXPERIENTE"
+                  class="min-h-[42px] rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-black text-[11px] uppercase tracking-wider transition"
+                >
+                  🎖️ EXPERIENTE
+                </button>
+                <button
+                  type="button"
+                  data-rank-select="MATADOR"
+                  class="min-h-[42px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-[11px] uppercase tracking-wider transition"
+                >
+                  💀 MATADOR
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                4. ESCOLHA SEU ESQUADRÃO:
+              </span>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  id="btnAuthJoinTeamA"
+                  type="button"
+                  class="min-h-[46px] rounded-xl border-2 border-blue-500 bg-blue-600/25 text-white font-black text-xs uppercase tracking-wider"
+                >
+                  🛡️ TIME A (ALPHA)
+                </button>
+                <button
+                  id="btnAuthJoinTeamB"
+                  type="button"
+                  class="min-h-[46px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider"
+                >
+                  ⚔️ TIME B (BRAVO)
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              class="w-full btn-tactical min-h-[56px] bg-amber-400 hover:bg-amber-300 text-zinc-950 text-sm sm:text-base font-black shadow-[0_0_25px_rgba(245,158,11,0.35)]"
+            >
+              🪖 ENTRAR NA SALA COMO SOLDADO
+            </button>
+
+            <p class="text-[11px] text-zinc-400 text-center pt-1">
+              🔒 <em>Soldados convidados não podem criar salas. Para criar salas, use a aba <strong>🔑 LOGIN</strong> ou <strong>📝 AUTO-CADASTRO</strong> acima.</em>
+            </p>
           </form>
 
           <!-- TAB 3: SELF-REGISTRATION FORM (AUTO-CADASTRO) -->

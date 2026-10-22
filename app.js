@@ -85,9 +85,44 @@ function getDefaultCloudMeta() {
     role: 'LOCAL', // 'LOCAL' | 'HOST' | 'PLAYER'
     mySoldierId: null,
     joinSelectedTeam: 'A',
+    selectedSoldierRank: 'EXPERIENTE', // 'RECRUTA' | 'EXPERIENTE' | 'MATADOR'
     authUser: null, // { id, email, name, isAdmin }
     myCreatedRooms: [] // [{ code, is_online, created_at, updated_at }]
   };
+}
+
+const SOLDIER_RANKS = {
+  RECRUTA: {
+    id: 'RECRUTA',
+    label: 'RECRUTA',
+    icon: '🔰',
+    weight: 1,
+    badgeClass: 'bg-sky-500/20 text-sky-300 border border-sky-400/40',
+    btnActiveClass:
+      'rounded-xl border-2 border-sky-400 bg-sky-500/20 text-sky-300 font-black uppercase tracking-wider transition'
+  },
+  EXPERIENTE: {
+    id: 'EXPERIENTE',
+    label: 'EXPERIENTE',
+    icon: '🎖️',
+    weight: 2,
+    badgeClass: 'bg-amber-500/20 text-amber-300 border border-amber-400/40',
+    btnActiveClass:
+      'rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-black uppercase tracking-wider transition'
+  },
+  MATADOR: {
+    id: 'MATADOR',
+    label: 'MATADOR',
+    icon: '💀',
+    weight: 3,
+    badgeClass: 'bg-red-500/20 text-red-300 border border-red-400/40',
+    btnActiveClass:
+      'rounded-xl border-2 border-red-500 bg-red-600/25 text-red-300 font-black uppercase tracking-wider transition'
+  }
+};
+
+function getSoldierRankInfo(rankId) {
+  return SOLDIER_RANKS[rankId] || SOLDIER_RANKS.EXPERIENTE;
 }
 
 let state = loadState();
@@ -1016,12 +1051,14 @@ async function joinCloudSession() {
 
       if (existingSoldier) {
         existingSoldier.team = chosenTeam;
+        existingSoldier.rank = cloudMeta.selectedSoldierRank || existingSoldier.rank || 'EXPERIENTE';
         cloudMeta.mySoldierId = existingSoldier.id;
       } else {
         const newSoldier = {
           id: 'op_' + cloudMeta.deviceId.slice(-6) + '_' + Date.now().toString(36),
           name: operatorName,
           team: chosenTeam,
+          rank: cloudMeta.selectedSoldierRank || 'EXPERIENTE',
           alive: true,
           stats: { survived: 0, kia: 0, matches: 0 }
         };
@@ -1693,14 +1730,17 @@ function confirmMatchResultAndScore() {
 /* ==========================================================================
    ROSTER MANAGEMENT (ALISTAMENTO & EQUILIBRAR TIMES)
    ========================================================================== */
-function addSoldier(nameRaw, teamKey, bindToCurrentDevice = false) {
+function addSoldier(nameRaw, teamKey, bindToCurrentDevice = false, rankOverride = null) {
   const name = (nameRaw || '').trim().toUpperCase();
   if (!name) return;
+
+  const rank = getSoldierRankInfo(rankOverride || cloudMeta.selectedSoldierRank || 'EXPERIENTE').id;
 
   const newSoldier = {
     id: 'op_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     name,
     team: teamKey === 'B' ? 'B' : 'A',
+    rank,
     alive: true,
     stats: {
       survived: 0,
@@ -1725,6 +1765,20 @@ function addSoldier(nameRaw, teamKey, bindToCurrentDevice = false) {
     input.value = '';
     input.focus();
   }
+}
+
+function cycleSoldierRank(soldierId) {
+  const soldier = state.soldiers.find((s) => s.id === soldierId);
+  if (!soldier) return;
+
+  const order = ['RECRUTA', 'EXPERIENTE', 'MATADOR'];
+  const currentIdx = order.indexOf(getSoldierRankInfo(soldier.rank).id);
+  const nextRank = order[(currentIdx + 1) % order.length];
+  soldier.rank = nextRank;
+
+  saveState();
+  renderAll();
+  renderRosterModal();
 }
 
 function switchSoldierTeam(soldierId) {
@@ -1776,8 +1830,13 @@ function shuffleAndBalanceTeams() {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
+  // Sort by combat rank weight (Matador -> Experiente -> Recruta) after randomizing so both squads receive balanced skill levels
+  shuffled.sort((a, b) => getSoldierRankInfo(b.rank).weight - getSoldierRankInfo(a.rank).weight);
+
+  const startWithB = Math.random() < 0.5;
   shuffled.forEach((s, idx) => {
-    s.team = idx % 2 === 0 ? 'A' : 'B';
+    const mod = idx % 2;
+    s.team = startWithB ? (mod === 0 ? 'B' : 'A') : mod === 0 ? 'A' : 'B';
     s.alive = true;
   });
 
@@ -1788,7 +1847,7 @@ function shuffleAndBalanceTeams() {
   renderAll();
   renderRosterModal();
   audioEngine.playDoubleBeep();
-  showToast('🎲', 'Times sorteados e equilibrados automaticamente!');
+  showToast('🎲', 'Times sorteados e equilibrados por nível (Recruta / Experiente / Matador)!');
 }
 
 /* ==========================================================================
@@ -1841,10 +1900,11 @@ function copyWhatsappReport() {
       const matches = s.stats?.matches || 0;
       const rate = matches > 0 ? Math.round((surv / matches) * 100) : 0;
       const tName = s.team === 'A' ? teamA.name : teamB.name;
+      const rankInfo = getSoldierRankInfo(s.rank);
       const medal =
         idx === 0 && surv > 0 ? '🥇 [IMORTAL]' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}º`;
       lines.push(
-        `${medal} *${s.name}* (${tName}) — 🛡️ ${surv}x Vivo | 💀 ${kia} KIA | 📈 ${rate}% (${matches}j)`
+        `${medal} *${s.name}* [${rankInfo.icon} ${rankInfo.label}] (${tName}) — 🛡️ ${surv}x Vivo | 💀 ${kia} KIA | 📈 ${rate}% (${matches}j)`
       );
     });
   }
@@ -1912,9 +1972,10 @@ function renderCloudStatusAndPlayerHud() {
   // Render Operator Self-Control HUD when soldier is bound
   const mySoldier = state.soldiers.find((s) => s.id === cloudMeta.mySoldierId);
   if (mySoldier && cloudMeta.sessionCode) {
+    const rankInfo = getSoldierRankInfo(mySoldier.rank);
     playerHud.classList.remove('hidden');
     document.getElementById('playerHudSessionCode').textContent = `#${cloudMeta.sessionCode}`;
-    document.getElementById('playerHudName').textContent = mySoldier.name;
+    document.getElementById('playerHudName').textContent = `${mySoldier.name} (${rankInfo.icon} ${rankInfo.label})`;
 
     const teamObj = state.teams[mySoldier.team];
     const teamBadge = document.getElementById('playerHudTeamBadge');
@@ -1985,7 +2046,33 @@ function renderHeaderAuthButton() {
   }
 }
 
+function renderRankSelectorButtons() {
+  const selected = getSoldierRankInfo(cloudMeta.selectedSoldierRank).id;
+  document.querySelectorAll('[data-rank-select]').forEach((btn) => {
+    const rankId = btn.getAttribute('data-rank-select');
+    const isSelected = rankId === selected;
+
+    if (!isSelected) {
+      btn.className =
+        'min-h-[42px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-white font-black text-xs uppercase tracking-wider transition';
+      return;
+    }
+
+    if (rankId === 'RECRUTA') {
+      btn.className =
+        'min-h-[42px] rounded-xl border-2 border-emerald-400 bg-emerald-500/25 text-white font-black text-xs uppercase tracking-wider shadow transition';
+    } else if (rankId === 'MATADOR') {
+      btn.className =
+        'min-h-[42px] rounded-xl border-2 border-red-500 bg-red-600/25 text-white font-black text-xs uppercase tracking-wider shadow transition';
+    } else {
+      btn.className =
+        'min-h-[42px] rounded-xl border-2 border-amber-400 bg-amber-500/25 text-white font-black text-xs uppercase tracking-wider shadow transition';
+    }
+  });
+}
+
 function renderAuthModal() {
+  renderRankSelectorButtons();
   const loggedInView = document.getElementById('authLoggedInView');
   const loggedOutView = document.getElementById('authLoggedOutView');
   if (!loggedInView || !loggedOutView) return;
@@ -2134,6 +2221,7 @@ function renderMyCreatedRoomsList() {
 }
 
 function renderCloudModal() {
+  renderRankSelectorButtons();
   const activeBox = document.getElementById('cloudActiveRoomBox');
   const createUnlocked = document.getElementById('createSessionUnlockedView');
   const createLocked = document.getElementById('createSessionLockedView');
@@ -2255,6 +2343,7 @@ function renderTeamPanels() {
     } else {
       teamSoldiers.forEach((s) => {
         const isMe = s.id === cloudMeta.mySoldierId;
+        const rankInfo = getSoldierRankInfo(s.rank);
         const badge = document.createElement('button');
         badge.type = 'button';
         badge.className = `soldier-badge ${s.alive ? 'soldier-alive' : 'soldier-kia'} ${
@@ -2263,6 +2352,9 @@ function renderTeamPanels() {
         badge.innerHTML = `
           <span>${s.alive ? '🛡️' : '💀'}</span>
           <span>${escapeHtml(s.name)}${isMe ? ' (VOCÊ)' : ''}</span>
+          <span class="text-[10px] font-tactical-mono uppercase px-1.5 py-0.5 rounded border ${rankInfo.badgeClass}" title="Nível: ${rankInfo.label}">
+            ${rankInfo.icon} ${rankInfo.label}
+          </span>
           <span class="text-[10px] font-tactical-mono uppercase px-1.5 py-0.5 rounded bg-black/40">
             ${s.alive ? 'VIVO' : 'K.I.A.'}
           </span>
@@ -2428,6 +2520,7 @@ function renderAudioButton() {
 }
 
 function renderRosterModal() {
+  renderRankSelectorButtons();
   document.getElementById('lblRosterBtnTeamA').textContent = state.teams.A.name;
   document.getElementById('lblRosterBtnTeamB').textContent = state.teams.B.name;
   document.getElementById('rosterHeaderTeamA').textContent = state.teams.A.name;
@@ -2454,15 +2547,24 @@ function renderRosterModal() {
     soldiers.forEach((s) => {
       const isMe = s.id === cloudMeta.mySoldierId;
       const canModify = isHostOrLocal() || isMe;
+      const rankInfo = getSoldierRankInfo(s.rank);
       const row = document.createElement('div');
       row.className =
         'flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2';
       row.innerHTML = `
-        <div class="flex items-center gap-2 min-w-0">
+        <div class="flex items-center gap-2 min-w-0 flex-wrap">
           <span class="text-base">🪖</span>
           <span class="font-bold text-sm text-white truncate">${escapeHtml(s.name)}${
         isMe ? ' <span class="text-sky-400 text-xs">(VOCÊ)</span>' : ''
       }</span>
+          <button
+            type="button"
+            data-rank-cycle-id="${s.id}"
+            title="Clique para alterar o nível do operador (Recruta / Experiente / Matador)"
+            class="text-[10px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded border ${rankInfo.badgeClass} hover:brightness-125 transition"
+          >
+            ${rankInfo.icon} ${rankInfo.label}
+          </button>
         </div>
         <div class="flex items-center gap-1.5 shrink-0 ${canModify ? '' : 'opacity-40 pointer-events-none'}">
           <button
@@ -2483,6 +2585,10 @@ function renderRosterModal() {
           </button>
         </div>
       `;
+      row.querySelector('[data-rank-cycle-id]').addEventListener('click', () => {
+        if (!canModify) return;
+        cycleSoldierRank(s.id);
+      });
       row.querySelector('[data-switch-id]').addEventListener('click', () => switchSoldierTeam(s.id));
       row.querySelector('[data-delete-id]').addEventListener('click', () => deleteSoldier(s.id));
       listEl.appendChild(row);
@@ -2608,9 +2714,18 @@ function renderReportModal() {
       posBadge = `<span class="font-bold text-amber-600">🥉 #3</span>`;
     }
 
+    const rankInfo = getSoldierRankInfo(s.rank);
+
     tr.innerHTML = `
       <td class="py-3.5 px-3 sm:px-4 whitespace-nowrap">${posBadge}</td>
-      <td class="py-3.5 px-3 sm:px-4 font-black uppercase text-white">${escapeHtml(s.name)}</td>
+      <td class="py-3.5 px-3 sm:px-4 font-black uppercase text-white">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <span>${escapeHtml(s.name)}</span>
+          <span class="text-[10px] font-tactical-mono px-1.5 py-0.5 rounded border ${rankInfo.badgeClass}">
+            ${rankInfo.icon} ${rankInfo.label}
+          </span>
+        </div>
+      </td>
       <td class="py-3.5 px-3 sm:px-4 font-bold text-xs uppercase text-zinc-300">${escapeHtml(teamName)}</td>
       <td class="py-3.5 px-3 sm:px-4 text-center font-tactical-mono font-black text-lime-400 text-base">${survived}</td>
       <td class="py-3.5 px-3 sm:px-4 text-center font-tactical-mono font-bold text-red-400">${kia}</td>
@@ -2630,6 +2745,8 @@ function renderReportModal() {
 
 function renderAll() {
   renderHeaderAuthButton();
+  renderAuthModal();
+  renderRankSelectorButtons();
   renderCloudStatusAndPlayerHud();
   renderColorPickers();
   renderTeamPanels();
@@ -2995,8 +3112,18 @@ function bindEvents() {
   document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
   document.getElementById('btnDoneHelp').addEventListener('click', closeHelp);
 
-  // Auth / Login / Self-Registration / Quick Join Modal Controls
-  const openAuthModal = (defaultTab = 'JOIN') => {
+  // Soldier Combat Level / Rank Selector Buttons (Recruta / Experiente / Matador)
+  document.querySelectorAll('[data-rank-select]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const rankId = btn.getAttribute('data-rank-select');
+      cloudMeta.selectedSoldierRank = getSoldierRankInfo(rankId).id;
+      saveCloudMeta();
+      renderRankSelectorButtons();
+    });
+  });
+
+  // Auth / Login / Self-Registration / Quick Join Modal Controls (Main Landing Screen)
+  const openAuthModal = (defaultTab = 'LOGIN') => {
     renderAuthModal();
     document.getElementById('modalAuth').classList.remove('hidden');
     if (!cloudMeta.authUser && defaultTab) {
@@ -3007,8 +3134,12 @@ function bindEvents() {
     document.getElementById('modalAuth').classList.add('hidden');
   };
 
-  document.getElementById('btnOpenAuthModal').addEventListener('click', () => openAuthModal('JOIN'));
+  document.getElementById('btnOpenAuthModal').addEventListener('click', () => openAuthModal('LOGIN'));
   document.getElementById('btnCloseAuthModal').addEventListener('click', closeAuthModal);
+  const btnEnterMainPanel = document.getElementById('btnEnterMainPanelFromAuth');
+  if (btnEnterMainPanel) {
+    btnEnterMainPanel.addEventListener('click', closeAuthModal);
+  }
 
   const tabQuickJoin = document.getElementById('tabAuthQuickJoin');
   const tabLogin = document.getElementById('tabAuthLogin');
@@ -3121,6 +3252,7 @@ async function checkInitialCloudSession() {
       // Open Central Access Modal on Quick Join tab so Soldier can enter immediately without room creation privileges
       renderAuthModal();
       document.getElementById('modalAuth').classList.remove('hidden');
+      document.getElementById('tabAuthQuickJoin')?.click();
       setTimeout(() => document.getElementById('inputAuthJoinName')?.focus(), 100);
       return;
     }
