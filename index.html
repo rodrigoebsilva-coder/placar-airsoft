@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="theme-color" content="#09090b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TacticalCmd" />
+  <meta name="description" content="Controlador Tático de Partidas de Paintball e Airsoft - Placar em Nuvem, Cronômetro, Áudio Locutor e Ranking Offline" />
+  
+  <title>Tactical Command — Paintball &amp; Airsoft</title>
+  
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='36' fill='%2309090b'/><circle cx='96' cy='96' r='56' fill='none' stroke='%23a3e635' stroke-width='10'/><circle cx='96' cy='96' r='10' fill='%23ef4444'/><line x1='96' y1='18' x2='96' y2='54' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='96' y1='138' x2='96' y2='174' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='18' y1='96' x2='54' y2='96' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/><line x1='138' y1='96' x2='174' y2='96' stroke='%23a3e635' stroke-width='10' stroke-linecap='round'/></svg>" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-50 tactical-bg antialiased selection:bg-lime-400 selection:text-zinc-950">
+
+  <!-- MAIN CONTAINER: min-h-[100dvh] without locking vertical scroll -->
+  <div class="min-h-[100dvh] flex flex-col justify-between p-3 sm:p-4 lg:p-6 max-w-[1680px] mx-auto gap-4">
+
+    <!-- TOP COMMAND HEADER -->
+    <header class="bg-zinc-900/95 border-2 border-zinc-800 rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-xl flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand + Status Indicators -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-zinc-950 border-2 border-lime-400/70 flex items-center justify-center shadow-[0_0_15px_rgba(163,230,53,0.25)]">
+            <span class="text-xl" aria-hidden="true">🎯</span>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-black tracking-wider uppercase text-white leading-none">
+                TACTICAL COMMAND
+              </h1>
+              <span class="hidden sm:inline-block text-[10px] font-tactical-mono font-bold uppercase px-2 py-0.5 rounded bg-lime-400/15 text-lime-400 border border-lime-400/40">
+                CLOUD V2.0
+              </span>
+            </div>
+            <p class="text-xs text-zinc-400 font-semibold tracking-wide mt-0.5">
+              PAINTBALL &amp; AIRSOFT MATCH CONTROLLER
+            </p>
+          </div>
+        </div>
+
+        <!-- System, Cloud Session & PWA Badges -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <span id="pwaStatusBadge" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-2.5 py-1 rounded-full bg-zinc-950 border border-zinc-700 text-lime-400">
+            🟢 PRONTO OFFLINE
+          </span>
+
+          <span id="wakeLockBadge" class="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-2.5 py-1 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400" title="Screen Wake Lock evita que a tela apague durante o combate">
+            <span id="wakeLockDot" class="w-2 h-2 rounded-full bg-zinc-600"></span>
+            <span id="wakeLockText">TELA: AUTO</span>
+          </span>
+
+          <!-- Active Cloud Session Badge (Shown when connected to a room) -->
+          <button
+            id="activeSessionPill"
+            type="button"
+            class="hidden items-center gap-1.5 text-xs font-tactical-mono font-black uppercase px-3 py-1 rounded-full bg-sky-500/20 border-2 border-sky-400 text-sky-300 shadow-[0_0_15px_rgba(56,189,248,0.3)] hover:bg-sky-500/30 transition"
+            title="Clique para abrir opções da Sessão na Nuvem ou copiar link"
+          >
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
+            <span id="activeSessionCodeText">SALA: ---</span>
+            <span id="activeSessionRoleBadge" class="ml-1 px-1.5 py-0.5 rounded bg-sky-400 text-zinc-950 text-[10px] font-black">JUIZ</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons Toolbar -->
+      <div class="flex items-center gap-2 flex-wrap w-full xl:w-auto justify-end">
+        <!-- Native PWA Install Button -->
+        <button id="btnInstallPwa" type="button" class="hidden px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.4)] transition flex items-center gap-1.5">
+          📲 INSTALAR APP
+        </button>
+
+        <!-- CLOUD MULTIPLAYER SESSION BUTTON -->
+        <button id="btnOpenCloudSession" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-sky-500/20 hover:bg-sky-500/30 active:scale-95 border-2 border-sky-400/80 text-sky-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow-[0_0_18px_rgba(56,189,248,0.2)]">
+          <span>☁️ SESSÃO ONLINE</span>
+          <span id="headerCloudStatus" class="px-1.5 py-0.5 text-[10px] font-tactical-mono rounded bg-zinc-950 text-sky-300 border border-sky-500/40">LOCAL</span>
+        </button>
+
+        <!-- Roster Modal Button -->
+        <button id="btnOpenRoster" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-zinc-800 hover:bg-zinc-700 active:scale-95 border border-zinc-600 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
+          <span>🪖 ALISTAMENTO</span>
+          <span id="headerRosterCount" class="px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-lime-400 border border-zinc-700">0</span>
+        </button>
+
+        <!-- Hall of Fame Report Modal Button -->
+        <button id="btnOpenReport" type="button" class="flex-1 sm:flex-initial px-3.5 py-2.5 min-h-[46px] rounded-xl bg-amber-500/15 hover:bg-amber-500/25 active:scale-95 border border-amber-500/50 text-amber-300 font-extrabold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition">
+          <span>🏆 RELATÓRIO</span>
+          <span id="headerMatchesCount" class="px-1.5 py-0.5 text-xs font-tactical-mono rounded bg-zinc-950 text-amber-400 border border-amber-500/40">0</span>
+        </button>
+
+        <!-- Test Voice Announcer Button -->
+        <button id="btnTestVoice" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition" title="Testar Locutor e Sirene">
+          🎙️ TESTAR VOZ
+        </button>
+
+        <!-- Audio Mute / Unmute Toggle -->
+        <button id="btnToggleMute" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1.5 transition" title="Ativar/Desativar Som">
+          <span id="muteIcon">🔊</span>
+          <span id="muteLabel" class="hidden md:inline">SOM ON</span>
+        </button>
+
+        <!-- Reset Session Button -->
+        <button id="btnResetSession" type="button" class="px-3 py-2.5 min-h-[46px] rounded-xl bg-red-950/50 hover:bg-red-900/60 active:scale-95 border border-red-800/70 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 transition" title="Zerar Sessão / Novo Jogo">
+          🗑️ <span class="hidden sm:inline">ZERAR SESSÃO</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- PLAYER SELF-CONTROL HUD (SHOWN WHEN PARTICIPANT JOINS VIA CELLPHONE)  -->
+    <!-- ===================================================================== -->
+    <section id="playerHudBanner" class="hidden bg-zinc-900 border-2 border-sky-400 rounded-2xl p-4 sm:p-5 shadow-[0_0_30px_rgba(56,189,248,0.2)]">
+      <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <!-- Operator Identity & Current Status -->
+        <div class="flex items-center justify-between md:justify-start gap-4">
+          <div id="playerHudAvatar" class="w-14 h-14 rounded-2xl bg-lime-500/20 border-2 border-lime-400 flex items-center justify-center text-3xl shrink-0">
+            🛡️
+          </div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] font-tactical-mono font-bold uppercase px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                SEU OPERADOR NA SESSÃO <span id="playerHudSessionCode">#---</span>
+              </span>
+              <span id="playerHudTeamBadge" class="text-[11px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded bg-blue-600 text-white">
+                TIME ALPHA
+              </span>
+            </div>
+            <h2 id="playerHudName" class="text-2xl sm:text-3xl font-black uppercase tracking-wider text-white mt-1">
+              OPERADOR
+            </h2>
+            <p id="playerHudStatusLabel" class="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-lime-400">
+              STATUS ATUAL: EM COMBATE (VIVO)
+            </p>
+          </div>
+        </div>
+
+        <!-- Giant Glove-Friendly Self-Hit / Respawn Action Buttons -->
+        <div class="flex flex-col sm:flex-row items-stretch gap-2.5 w-full md:w-auto">
+          <button
+            id="btnPlayerSelfToggleStatus"
+            type="button"
+            class="btn-tactical min-h-[68px] px-6 sm:px-8 bg-red-600 hover:bg-red-500 text-white text-base sm:text-xl font-black shadow-[0_0_25px_rgba(220,38,38,0.5)]"
+          >
+            💀 FUI ATINGIDO! (MARCAR K.I.A.)
+          </button>
+
+          <button
+            id="btnPlayerSwitchTeam"
+            type="button"
+            class="btn-tactical min-h-[68px] px-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 text-xs sm:text-sm font-black"
+            title="Mudar de Esquadrão"
+          >
+            ⇄ TROCAR TIME
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAIN TACTICAL GRID (Portrait: Center->A->B | Landscape & lg: A->Center->B) -->
+    <main class="battle-grid flex-1 my-1">
+
+      <!-- ================= PANEL TEAM A ================= -->
+      <section id="panelTeamA" class="panel-team-a team-card theme-blue bg-zinc-900 rounded-2xl overflow-hidden flex flex-col justify-between">
+        <!-- Team Header -->
+        <div class="team-header-strip p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex-1">
+              <label for="inputTeamAName" class="block text-[11px] font-tactical-mono uppercase tracking-widest text-zinc-400 font-bold mb-1">
+                IDENTIFICAÇÃO TIME A
+              </label>
+              <input
+                id="inputTeamAName"
+                type="text"
+                maxlength="18"
+                value="ALPHA"
+                class="w-full bg-zinc-950/90 border-2 border-zinc-700 focus:border-white rounded-xl px-3 py-2 text-xl sm:text-2xl font-black uppercase tracking-wider text-white outline-none transition"
+                placeholder="NOME DO TIME A"
+              />
+            </div>
+
+            <!-- Rounds Won Badge -->
+            <div class="flex flex-col items-center justify-center px-3.5 py-2 rounded-xl team-badge-score min-w-[84px]">
+              <span class="text-[10px] font-tactical-mono font-extrabold uppercase tracking-widest text-zinc-200">VITÓRIAS</span>
+              <span id="scoreTeamA" class="text-3xl sm:text-4xl font-tactical-mono font-black leading-none mt-0.5">0</span>
+            </div>
+          </div>
+
+          <!-- Tactical Color Selector -->
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">COR TÁTICA:</span>
+            <div id="colorPickerTeamA" class="flex items-center gap-2" role="radiogroup" aria-label="Cor Tática Time A"></div>
+          </div>
+        </div>
+
+        <!-- Giant Alive Counter -->
+        <div class="p-4 sm:p-5 flex flex-col items-center justify-center bg-zinc-950/60 border-b border-zinc-800/80">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse"></span>
+            <span class="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-zinc-300">
+              JOGADORES VIVOS EM CAMPO
+            </span>
+          </div>
+
+          <div class="text-7xl sm:text-8xl font-tactical-mono font-black tracking-tight text-white my-2 select-none drop-shadow-[0_4px_20px_rgba(255,255,255,0.12)]" id="aliveCountTeamA">
+            0
+          </div>
+
+          <!-- Giant Glove-Friendly (-) and (+) Buttons -->
+          <div id="controlsAliveTeamA" class="grid grid-cols-2 gap-3 w-full mt-2">
+            <button
+              id="btnDecAliveA"
+              type="button"
+              class="btn-tactical min-h-[64px] bg-red-600/20 hover:bg-red-600/35 border-2 border-red-500 text-red-300 text-xl sm:text-2xl shadow-lg"
+              aria-label="Remover 1 jogador vivo do Time A"
+            >
+              <span class="text-3xl font-tactical-mono leading-none">−</span>
+              <span class="text-sm sm:text-base font-black">BAIXA (K.I.A.)</span>
+            </button>
+
+            <button
+              id="btnIncAliveA"
+              type="button"
+              class="btn-tactical min-h-[64px] bg-lime-500/20 hover:bg-lime-500/35 border-2 border-lime-400 text-lime-300 text-xl sm:text-2xl shadow-lg"
+              aria-label="Adicionar 1 jogador vivo ao Time A"
+            >
+              <span class="text-3xl font-tactical-mono leading-none">+</span>
+              <span class="text-sm sm:text-base font-black">VIVO</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Enlisted Soldiers Interactive Roster Card -->
+        <div class="p-4 flex-1 flex flex-col justify-between bg-zinc-900">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                🪖 OPERADORES ALISTADOS
+                <span id="rosterSummaryTeamA" class="font-tactical-mono text-zinc-400">(0/0 VIVOS)</span>
+              </span>
+              <span class="text-[11px] text-amber-400 font-semibold">Toque para Vivo / K.I.A.</span>
+            </div>
+
+            <div id="soldierBadgesTeamA" class="flex flex-wrap gap-2 min-h-[54px] items-start">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2 text-xs text-zinc-400">
+            <span id="syncLabelTeamA">Sincronizado em tempo real</span>
+            <button type="button" data-open-roster="A" class="font-bold text-lime-400 hover:underline uppercase">
+              + Gerenciar Tropa
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CENTER PANEL: CHRONOMETER & CONTROLS ================= -->
+      <section id="panelCenter" class="panel-center bg-zinc-900 border-2 border-zinc-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 shadow-2xl">
+        <!-- Game Mode Selector -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-tactical-mono font-extrabold uppercase tracking-widest text-zinc-400">
+              MODO DE OPERAÇÃO
+            </span>
+            <span id="matchRoundBadge" class="text-xs font-tactical-mono font-bold uppercase px-2.5 py-0.5 rounded bg-zinc-950 border border-zinc-700 text-amber-400">
+              ROUND #1
+            </span>
+          </div>
+
+          <div id="modeSelectorBox" class="grid grid-cols-2 gap-2.5 bg-zinc-950 p-1.5 rounded-xl border border-zinc-800">
+            <button
+              id="btnModeTimeLimit"
+              type="button"
+              class="min-h-[52px] rounded-lg font-black text-xs sm:text-sm uppercase tracking-wider px-3 py-2 transition flex flex-col items-center justify-center gap-0.5 bg-lime-400 text-zinc-950 shadow"
+            >
+              <span>⏱️ TIME LIMIT</span>
+              <span class="text-[10px] font-bold opacity-80">CONTAGEM REGRESSIVA</span>
+            </button>
+
+            <button
+              id="btnModeElimination"
+              type="button"
+              class="min-h-[52px] rounded-lg font-black text-xs sm:text-sm uppercase tracking-wider px-3 py-2 transition flex flex-col items-center justify-center gap-0.5 bg-zinc-900 text-zinc-300 hover:text-white"
+            >
+              <span>💀 ELIMINATION</span>
+              <span class="text-[10px] font-bold opacity-75">MATA-MATA PROGRESSIVO</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Central Chronometer Display -->
+        <div id="chronoDisplayBox" class="bg-zinc-950 border-2 border-zinc-700 rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center text-center relative overflow-hidden transition-all">
+          <!-- Status Banner -->
+          <div id="combatStateBanner" class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-300 text-xs sm:text-sm font-black uppercase tracking-widest mb-2">
+            <span id="combatStateDot" class="w-2.5 h-2.5 rounded-full bg-zinc-400"></span>
+            <span id="combatStateText">AGUARDANDO COMANDO</span>
+          </div>
+
+          <!-- Preparation Warning Subbanner (Only visible during PREP) -->
+          <div id="prepAlertBanner" class="hidden w-full py-2 px-3 mb-2 rounded-xl bg-amber-500/20 border-2 border-amber-400 text-amber-300 font-black text-sm sm:text-base uppercase tracking-widest animate-pulse">
+            ⚠️ ASSUMAM SUAS POSIÇÕES ⚠️
+          </div>
+
+          <!-- Giant Monospace Timer -->
+          <div id="mainTimerDigits" class="text-6xl sm:text-7xl xl:text-8xl font-tactical-mono font-black tracking-tight text-lime-400 my-1 leading-none select-none drop-shadow-[0_0_24px_rgba(163,230,53,0.28)]">
+            10:00
+          </div>
+
+          <!-- Sub-info label -->
+          <p id="timerSubLabel" class="text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-400 mt-2">
+            TEMPO LIMITE: 10 MINUTOS • PREPARAÇÃO: 30S
+          </p>
+
+          <!-- Skip Prep Button (Shown only during Preparation state for Host) -->
+          <button
+            id="btnSkipPrep"
+            type="button"
+            class="hidden mt-4 w-full btn-tactical min-h-[56px] bg-amber-500 hover:bg-amber-400 text-zinc-950 text-sm sm:text-base font-black shadow-[0_0_25px_rgba(245,158,11,0.5)]"
+          >
+            ⚡ PULAR PREPARAÇÃO (INICIAR AGORA)
+          </button>
+        </div>
+
+        <!-- Time & Prep Quick Adjusters (Editable when IDLE by Host) -->
+        <div id="timerConfigPanel" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Match Duration Config (TIME LIMIT mode) -->
+          <div id="durationConfigBox" class="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-zinc-400">TEMPO DE COMBATE</span>
+              <span id="lblConfigMinutes" class="text-sm font-tactical-mono font-black text-lime-400">10 MIN</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="btnMinusMin" type="button" class="btn-tactical min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white text-sm font-tactical-mono">
+                −1 MIN
+              </button>
+              <button id="btnPlusMin" type="button" class="btn-tactical min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white text-sm font-tactical-mono">
+                +1 MIN
+              </button>
+            </div>
+          </div>
+
+          <!-- Prep Countdown Config -->
+          <div class="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-zinc-400">PREPARAÇÃO</span>
+              <span id="lblConfigPrep" class="text-sm font-tactical-mono font-black text-amber-400">30s</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button id="btnMinusPrep" type="button" class="btn-tactical min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white text-xs sm:text-sm font-tactical-mono">
+                −15s
+              </button>
+              <button id="btnZeroPrep" type="button" class="btn-tactical min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-amber-400 text-xs sm:text-sm font-tactical-mono">
+                0s OFF
+              </button>
+              <button id="btnPlusPrep" type="button" class="btn-tactical min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white text-xs sm:text-sm font-tactical-mono">
+                +15s
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Primary Chronometer Action Buttons (Host Controls) -->
+        <div id="hostChronoControls" class="flex flex-col gap-2.5">
+          <!-- Start / Pause-Resume Row -->
+          <div class="grid grid-cols-1 gap-2.5">
+            <button
+              id="btnStartMatch"
+              type="button"
+              class="btn-tactical min-h-[64px] bg-lime-400 hover:bg-lime-300 text-zinc-950 text-lg sm:text-xl font-black shadow-[0_0_25px_rgba(163,230,53,0.4)]"
+            >
+              ▶️ INICIAR PARTIDA
+            </button>
+
+            <button
+              id="btnPauseResumeMatch"
+              type="button"
+              class="hidden btn-tactical min-h-[64px] bg-amber-500 hover:bg-amber-400 text-zinc-950 text-lg sm:text-xl font-black shadow-[0_0_20px_rgba(245,158,11,0.35)]"
+            >
+              ⏸️ PAUSAR COMBATE
+            </button>
+          </div>
+
+          <!-- Finish / Verify & Reset Row -->
+          <div class="grid grid-cols-2 gap-2.5">
+            <button
+              id="btnFinishMatch"
+              type="button"
+              class="btn-tactical min-h-[58px] bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-black px-3 shadow-[0_0_20px_rgba(220,38,38,0.35)]"
+            >
+              🏁 FINALIZAR / CONFERIR VIVOS
+            </button>
+
+            <button
+              id="btnResetTimer"
+              type="button"
+              class="btn-tactical min-h-[58px] bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 text-xs sm:text-sm font-black px-3"
+            >
+              🔄 RESETAR CRONÔMETRO
+            </button>
+          </div>
+        </div>
+
+        <!-- Guest Info Banner (Shown when connected as Participant instead of Host) -->
+        <div id="guestChronoNotice" class="hidden bg-zinc-950 border border-sky-500/40 rounded-xl p-3 text-center">
+          <p class="text-xs font-bold uppercase tracking-wider text-sky-300">
+            📡 SINCRONIZADO AO VIVO COM O JUIZ DA PARTIDA
+          </p>
+          <p class="text-[11px] text-zinc-400 mt-0.5">
+            O cronômetro e o encerramento de round são controlados pelo anfitrião da sala. Use o painel acima para marcar quando for atingido!
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= PANEL TEAM B ================= -->
+      <section id="panelTeamB" class="panel-team-b team-card theme-red bg-zinc-900 rounded-2xl overflow-hidden flex flex-col justify-between">
+        <!-- Team Header -->
+        <div class="team-header-strip p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex-1">
+              <label for="inputTeamBName" class="block text-[11px] font-tactical-mono uppercase tracking-widest text-zinc-400 font-bold mb-1">
+                IDENTIFICAÇÃO TIME B
+              </label>
+              <input
+                id="inputTeamBName"
+                type="text"
+                maxlength="18"
+                value="BRAVO"
+                class="w-full bg-zinc-950/90 border-2 border-zinc-700 focus:border-white rounded-xl px-3 py-2 text-xl sm:text-2xl font-black uppercase tracking-wider text-white outline-none transition"
+                placeholder="NOME DO TIME B"
+              />
+            </div>
+
+            <!-- Rounds Won Badge -->
+            <div class="flex flex-col items-center justify-center px-3.5 py-2 rounded-xl team-badge-score min-w-[84px]">
+              <span class="text-[10px] font-tactical-mono font-extrabold uppercase tracking-widest text-zinc-200">VITÓRIAS</span>
+              <span id="scoreTeamB" class="text-3xl sm:text-4xl font-tactical-mono font-black leading-none mt-0.5">0</span>
+            </div>
+          </div>
+
+          <!-- Tactical Color Selector -->
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">COR TÁTICA:</span>
+            <div id="colorPickerTeamB" class="flex items-center gap-2" role="radiogroup" aria-label="Cor Tática Time B"></div>
+          </div>
+        </div>
+
+        <!-- Giant Alive Counter -->
+        <div class="p-4 sm:p-5 flex flex-col items-center justify-center bg-zinc-950/60 border-b border-zinc-800/80">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse"></span>
+            <span class="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-zinc-300">
+              JOGADORES VIVOS EM CAMPO
+            </span>
+          </div>
+
+          <div class="text-7xl sm:text-8xl font-tactical-mono font-black tracking-tight text-white my-2 select-none drop-shadow-[0_4px_20px_rgba(255,255,255,0.12)]" id="aliveCountTeamB">
+            0
+          </div>
+
+          <!-- Giant Glove-Friendly (-) and (+) Buttons -->
+          <div id="controlsAliveTeamB" class="grid grid-cols-2 gap-3 w-full mt-2">
+            <button
+              id="btnDecAliveB"
+              type="button"
+              class="btn-tactical min-h-[64px] bg-red-600/20 hover:bg-red-600/35 border-2 border-red-500 text-red-300 text-xl sm:text-2xl shadow-lg"
+              aria-label="Remover 1 jogador vivo do Time B"
+            >
+              <span class="text-3xl font-tactical-mono leading-none">−</span>
+              <span class="text-sm sm:text-base font-black">BAIXA (K.I.A.)</span>
+            </button>
+
+            <button
+              id="btnIncAliveB"
+              type="button"
+              class="btn-tactical min-h-[64px] bg-lime-500/20 hover:bg-lime-500/35 border-2 border-lime-400 text-lime-300 text-xl sm:text-2xl shadow-lg"
+              aria-label="Adicionar 1 jogador vivo ao Time B"
+            >
+              <span class="text-3xl font-tactical-mono leading-none">+</span>
+              <span class="text-sm sm:text-base font-black">VIVO</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Enlisted Soldiers Interactive Roster Card -->
+        <div class="p-4 flex-1 flex flex-col justify-between bg-zinc-900">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <span class="text-xs font-extrabold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                🪖 OPERADORES ALISTADOS
+                <span id="rosterSummaryTeamB" class="font-tactical-mono text-zinc-400">(0/0 VIVOS)</span>
+              </span>
+              <span class="text-[11px] text-amber-400 font-semibold">Toque para Vivo / K.I.A.</span>
+            </div>
+
+            <div id="soldierBadgesTeamB" class="flex flex-wrap gap-2 min-h-[54px] items-start">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2 text-xs text-zinc-400">
+            <span id="syncLabelTeamB">Sincronizado em tempo real</span>
+            <button type="button" data-open-roster="B" class="font-bold text-lime-400 hover:underline uppercase">
+              + Gerenciar Tropa
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- FOOTER STATUS BAR -->
+    <footer class="bg-zinc-900/80 border border-zinc-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-zinc-300">TACTICAL MATCH CONTROLLER</span>
+        <span>•</span>
+        <span id="footerSyncModeText">Modo Local Offline + Suporte a Sessão em Nuvem (Supabase Realtime)</span>
+      </div>
+      <div class="font-tactical-mono text-zinc-400">
+        Toque nos soldados para alternar <span class="text-lime-400 font-bold">VIVO</span> / <span class="text-red-400 font-bold">K.I.A.</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 0: SESSÃO ONLINE / MULTIPLAYER NA NUVEM (SUPABASE REALTIME)       -->
+  <!-- ======================================================================= -->
+  <div id="modalCloudSession" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-sky-500/80 rounded-2xl w-full max-w-3xl overflow-hidden shadow-[0_0_50px_rgba(56,189,248,0.2)] my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">☁️</span>
+          <div>
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-wider text-white">
+              CENTRAL DE SESSÃO NA NUVEM (TEMPO REAL)
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Crie uma sala como Juiz/Host ou entre em uma partida existente pelo celular
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseCloudSession" type="button" class="min-h-[48px] min-w-[48px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-4 sm:p-6 space-y-5 max-h-[82dvh] overflow-y-auto">
+
+        <!-- ACTIVE SESSION BANNER (Shown when already connected to a room) -->
+        <div id="cloudActiveRoomBox" class="hidden bg-zinc-950 border-2 border-lime-400 rounded-2xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span class="text-xs font-tactical-mono font-bold uppercase text-lime-400">
+                🟢 CONECTADO EM TEMPO REAL
+              </span>
+              <div class="flex items-center gap-3 mt-1">
+                <span class="text-3xl sm:text-4xl font-tactical-mono font-black tracking-widest text-white" id="cloudModalRoomCode">
+                  ALPHA-01
+                </span>
+                <span id="cloudModalRoleBadge" class="px-2.5 py-1 rounded-lg bg-lime-400 text-zinc-950 font-black text-xs uppercase">
+                  JUIZ (CRIADOR)
+                </span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                id="btnCopySessionLink"
+                type="button"
+                class="btn-tactical min-h-[48px] px-4 bg-sky-500 hover:bg-sky-400 text-zinc-950 text-xs font-black"
+              >
+                🔗 COPIAR LINK DE CONVITE
+              </button>
+              <button
+                id="btnLeaveCloudSession"
+                type="button"
+                class="btn-tactical min-h-[48px] px-4 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-xs font-black"
+              >
+                🚪 SAIR DA SESSÃO
+              </button>
+            </div>
+          </div>
+
+          <p class="text-xs text-zinc-300 bg-zinc-900/90 border border-zinc-800 rounded-xl p-3">
+            💡 <strong>Como convidar os jogadores:</strong> Compartilhe o código acima ou clique em <strong>Copiar Link de Convite</strong> e envie no grupo do WhatsApp. Quando eles abrirem, poderão digitar o codinome e marcar o próprio K.I.A. pelo celular!
+          </p>
+        </div>
+
+        <!-- CREATE OR JOIN ROOM TABS (Shown when not in a session) -->
+        <div id="cloudJoinCreateGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <!-- CARD 1: CRIAR SESSÃO (JUIZ / HOST) -->
+          <div class="bg-zinc-950 border-2 border-zinc-800 hover:border-lime-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 transition">
+            <div class="space-y-3">
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-lime-400/15 text-lime-400 font-tactical-mono text-xs font-black uppercase">
+                👑 MODO JUIZ / ANFITRIÃO
+              </div>
+              <h3 class="text-lg font-black uppercase text-white">
+                CRIAR NOVA SESSÃO
+              </h3>
+              <p class="text-xs text-zinc-400">
+                Gere um código automático ou defina um código personalizado (ex: <code class="text-lime-400">MATA-01</code>, <code class="text-lime-400">DOMINGO</code>) para que todos entrem.
+              </p>
+
+              <div>
+                <label for="inputCreateSessionCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                  CÓDIGO DA SESSÃO (MANUAL OU AUTOMÁTICO)
+                </label>
+                <div class="flex gap-2">
+                  <input
+                    id="inputCreateSessionCode"
+                    type="text"
+                    maxlength="16"
+                    placeholder="Ex: TACTICAL-77"
+                    class="flex-1 min-h-[52px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
+                  />
+                  <button
+                    id="btnGenerateRandomCode"
+                    type="button"
+                    class="px-3.5 min-h-[52px] rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-amber-400 font-black text-xs uppercase"
+                    title="Gerar Código Aleatório"
+                  >
+                    🎲 GERAR
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              id="btnCreateCloudSession"
+              type="button"
+              class="w-full btn-tactical min-h-[58px] bg-lime-400 hover:bg-lime-300 text-zinc-950 text-sm sm:text-base font-black shadow-[0_0_25px_rgba(163,230,53,0.35)]"
+            >
+              🚀 CRIAR SESSÃO NA NUVEM
+            </button>
+          </div>
+
+          <!-- CARD 2: ENTRAR EM SESSÃO EXISTENTE (OPERADOR / PARTICIPANTE) -->
+          <div class="bg-zinc-950 border-2 border-zinc-800 hover:border-sky-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 transition">
+            <div class="space-y-3">
+              <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-sky-400/15 text-sky-300 font-tactical-mono text-xs font-black uppercase">
+                🪖 MODO OPERADOR / CELULAR
+              </div>
+              <h3 class="text-lg font-black uppercase text-white">
+                ENTRAR EM SESSÃO EXISTENTE
+              </h3>
+
+              <div>
+                <label for="inputJoinSessionCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                  1. CÓDIGO DA SALA
+                </label>
+                <input
+                  id="inputJoinSessionCode"
+                  type="text"
+                  maxlength="16"
+                  placeholder="Digite o código da partida..."
+                  class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label for="inputJoinOperatorName" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                  2. SEU CODINOME DE OPERADOR (OPCIONAL PARA ESPECTADOR)
+                </label>
+                <input
+                  id="inputJoinOperatorName"
+                  type="text"
+                  maxlength="22"
+                  placeholder="Ex: GHOST, SNIPER, FALCÃO..."
+                  class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 text-base font-bold uppercase text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <span class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
+                  3. ESCOLHA SEU ESQUADRÃO:
+                </span>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    id="btnSelectJoinTeamA"
+                    type="button"
+                    class="min-h-[46px] rounded-xl border-2 border-blue-500 bg-blue-600/25 text-white font-black text-xs uppercase tracking-wider"
+                  >
+                    🛡️ TIME A (ALPHA)
+                  </button>
+                  <button
+                    id="btnSelectJoinTeamB"
+                    type="button"
+                    class="min-h-[46px] rounded-xl border-2 border-zinc-700 bg-zinc-900 text-zinc-400 font-black text-xs uppercase tracking-wider"
+                  >
+                    ⚔️ TIME B (BRAVO)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              id="btnJoinCloudSession"
+              type="button"
+              class="w-full btn-tactical min-h-[58px] bg-sky-400 hover:bg-sky-300 text-zinc-950 text-sm sm:text-base font-black shadow-[0_0_25px_rgba(56,189,248,0.35)]"
+            >
+              📲 ENTRAR E ALISTAR-SE
+            </button>
+          </div>
+
+        </div>
+
+        <!-- SUPABASE CREDENTIALS CONFIGURATION ACCORDION -->
+        <details id="supabaseConfigAccordion" class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 group">
+          <summary class="cursor-pointer font-extrabold text-xs sm:text-sm uppercase tracking-wider text-amber-400 flex items-center justify-between">
+            <span>⚙️ CONFIGURAÇÃO DO BANCO SUPABASE (URL &amp; ANON KEY)</span>
+            <span id="supabaseConfigStatusBadge" class="text-[11px] font-tactical-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-400">
+              VERIFICAR CREDENCIAIS
+            </span>
+          </summary>
+
+          <div class="mt-4 pt-4 border-t border-zinc-800 space-y-3 text-xs text-zinc-300">
+            <p class="text-zinc-400 leading-relaxed">
+              Para sincronizar entre vários celulares pela internet, crie um projeto gratuito em <strong>supabase.com</strong>, execute o script do arquivo <code class="text-lime-400">supabase_setup.sql</code> no <em>SQL Editor</em> e cole abaixo a <strong>Project URL</strong> e a chave pública <strong>anon / public</strong> (em <em>Project Settings &rarr; API</em>):
+            </p>
+
+            <div class="grid grid-cols-1 gap-3">
+              <div>
+                <label for="inputSupabaseUrl" class="block font-bold uppercase text-zinc-400 mb-1">
+                  SUPABASE PROJECT URL
+                </label>
+                <input
+                  id="inputSupabaseUrl"
+                  type="url"
+                  placeholder="https://seu-projeto.supabase.co"
+                  class="w-full min-h-[46px] bg-zinc-900 border border-zinc-700 focus:border-amber-400 rounded-xl px-3 font-tactical-mono text-xs text-white outline-none"
+                />
+              </div>
+
+              <div>
+                <label for="inputSupabaseKey" class="block font-bold uppercase text-zinc-400 mb-1">
+                  SUPABASE ANON PUBLIC KEY
+                </label>
+                <input
+                  id="inputSupabaseKey"
+                  type="text"
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  class="w-full min-h-[46px] bg-zinc-900 border border-zinc-700 focus:border-amber-400 rounded-xl px-3 font-tactical-mono text-xs text-white outline-none"
+                />
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <button
+                id="btnCopySqlSchema"
+                type="button"
+                class="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 font-bold text-xs uppercase"
+              >
+                📋 COPIAR SCRIPT SQL DA TABELA
+              </button>
+
+              <button
+                id="btnSaveSupabaseConfig"
+                type="button"
+                class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs uppercase"
+              >
+                💾 SALVAR E CONECTAR SUPABASE
+              </button>
+            </div>
+          </div>
+        </details>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 1: ALISTAMENTO DE SOLDADOS (ROSTER MODAL)                         -->
+  <!-- ======================================================================= -->
+  <div id="modalRoster" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-zinc-700 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl my-auto">
+      <!-- Modal Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🪖</span>
+          <div>
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-wider text-white">
+              CENTRAL DE ALISTAMENTO DE OPERADORES
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Cadastre os soldados, distribua nos esquadrões ou sorteie times equilibrados
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseRoster" type="button" class="min-h-[48px] min-w-[48px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Modal Content -->
+      <div class="p-4 sm:p-6 space-y-5 max-h-[82dvh] overflow-y-auto">
+        <!-- Add Soldier Form -->
+        <form id="formAddSoldier" class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row gap-3 items-stretch">
+          <div class="flex-1">
+            <label for="inputSoldierName" class="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+              NOME / CODINOME DO OPERADOR
+            </label>
+            <input
+              id="inputSoldierName"
+              type="text"
+              maxlength="24"
+              placeholder="Ex: GHOST, CAP. NASCIMENTO, VIPER..."
+              class="w-full min-h-[56px] bg-zinc-900 border-2 border-zinc-700 focus:border-lime-400 rounded-xl px-4 text-base sm:text-lg font-bold uppercase text-white outline-none"
+              required
+            />
+          </div>
+
+          <div class="flex sm:flex-col justify-end gap-2 sm:w-auto">
+            <span class="hidden sm:block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-0.5">
+              ALISTAR NO ESQUADRÃO:
+            </span>
+            <div class="grid grid-cols-2 gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                id="btnAddToTeamA"
+                class="btn-tactical min-h-[56px] px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-black"
+              >
+                + <span id="lblRosterBtnTeamA">ALPHA</span>
+              </button>
+              <button
+                type="button"
+                id="btnAddToTeamB"
+                class="btn-tactical min-h-[56px] px-4 bg-red-600 hover:bg-red-500 text-white text-xs sm:text-sm font-black"
+              >
+                + <span id="lblRosterBtnTeamB">BRAVO</span>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Balance / Randomize Teams Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
+          <div class="text-xs sm:text-sm text-zinc-300 font-semibold">
+            Total de Operadores Alistados: <span id="rosterTotalCount" class="font-tactical-mono font-black text-lime-400">0</span>
+          </div>
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              id="btnShuffleTeams"
+              type="button"
+              class="flex-1 sm:flex-initial btn-tactical min-h-[56px] px-5 bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs sm:text-sm font-black shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+            >
+              🎲 SORTEAR / EQUILIBRAR TIMES
+            </button>
+          </div>
+        </div>
+
+        <!-- Two Columns: Team A & Team B Lists -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Team A Roster Box -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
+              <h3 id="rosterHeaderTeamA" class="font-black uppercase tracking-wider text-base text-blue-400">
+                ALPHA
+              </h3>
+              <span id="rosterCountTeamA" class="text-xs font-tactical-mono font-bold px-2.5 py-1 rounded bg-zinc-900 text-zinc-200 border border-zinc-700">
+                0 SOLDADOS
+              </span>
+            </div>
+            <div id="rosterListTeamA" class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Team B Roster Box -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
+              <h3 id="rosterHeaderTeamB" class="font-black uppercase tracking-wider text-base text-red-400">
+                BRAVO
+              </h3>
+              <span id="rosterCountTeamB" class="text-xs font-tactical-mono font-bold px-2.5 py-1 rounded bg-zinc-900 text-zinc-200 border border-zinc-700">
+                0 SOLDADOS
+              </span>
+            </div>
+            <div id="rosterListTeamB" class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex justify-end">
+        <button id="btnDoneRoster" type="button" class="btn-tactical min-h-[56px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-sm sm:text-base font-black">
+          ✅ CONCLUIR ALISTAMENTO
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 2: CONFERÊNCIA PÓS-PARTIDA (POST-MATCH VERIFICATION MODAL)        -->
+  <!-- ======================================================================= -->
+  <div id="modalVerification" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-amber-500/80 rounded-2xl w-full max-w-5xl overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.25)] my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span id="verifyReasonBadge" class="inline-block text-[11px] font-tactical-mono font-black uppercase px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 mb-1">
+            FIM DE COMBATE
+          </span>
+          <h2 class="text-xl sm:text-2xl font-black uppercase tracking-wider text-white">
+            📋 CONFERÊNCIA TÁTICA DE SOBREVIVENTES
+          </h2>
+        </div>
+
+        <button id="btnCancelVerification" type="button" class="px-4 py-2.5 min-h-[48px] rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 font-bold text-xs uppercase tracking-wider">
+          ↩️ VOLTAR AO JOGO
+        </button>
+      </div>
+
+      <!-- Dynamic Winner Banner -->
+      <div class="p-4 sm:p-6 space-y-5 max-h-[82dvh] overflow-y-auto">
+        <div id="verifyWinnerBanner" class="bg-zinc-950 border-2 border-lime-400 rounded-2xl p-4 text-center shadow-lg transition-all">
+          <div class="text-xs font-tactical-mono uppercase tracking-widest text-zinc-400 font-bold">
+            RESULTADO CALCULADO EM TEMPO REAL
+          </div>
+          <div id="verifyWinnerTitle" class="text-2xl sm:text-4xl font-black uppercase tracking-wider text-lime-400 mt-1">
+            VITÓRIA: ALPHA
+          </div>
+          <div id="verifyWinnerSubtitle" class="text-xs sm:text-sm font-bold text-zinc-300 mt-1">
+            5 sobreviventes contra 0
+          </div>
+        </div>
+
+        <!-- Two Columns for Team Verification -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Verify Team A -->
+          <div class="bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-4 flex flex-col justify-between gap-4">
+            <div>
+              <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
+                <h3 id="verifyNameTeamA" class="text-lg sm:text-xl font-black uppercase text-blue-400">
+                  ALPHA
+                </h3>
+                <span class="text-xs font-tactical-mono uppercase text-zinc-400 font-bold">SOBREVIVENTES</span>
+              </div>
+
+              <!-- Numeric Survivor Adjuster -->
+              <div class="flex items-center justify-between gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-800 mb-3">
+                <button id="btnVerifyDecA" type="button" class="btn-tactical min-h-[56px] w-16 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-2xl font-tactical-mono">
+                  −
+                </button>
+                <div class="text-center">
+                  <div id="verifyCountTeamA" class="text-5xl font-tactical-mono font-black text-white leading-none">
+                    0
+                  </div>
+                  <span class="text-[11px] font-bold uppercase text-zinc-400">VIVOS NO FINAL</span>
+                </div>
+                <button id="btnVerifyIncA" type="button" class="btn-tactical min-h-[56px] w-16 bg-lime-500/20 hover:bg-lime-500/35 border border-lime-400 text-lime-300 text-2xl font-tactical-mono">
+                  +
+                </button>
+              </div>
+
+              <!-- Quick Action Buttons -->
+              <div class="grid grid-cols-2 gap-2 mb-4">
+                <button id="btnVerifyAllDeadA" type="button" class="btn-tactical min-h-[56px] bg-red-950/60 hover:bg-red-900/70 border border-red-700 text-red-300 text-xs font-black px-2">
+                  💀 TODOS MORTOS (0)
+                </button>
+                <button id="btnVerifyAllAliveA" type="button" class="btn-tactical min-h-[56px] bg-lime-950/60 hover:bg-lime-900/70 border border-lime-700 text-lime-300 text-xs font-black px-2">
+                  🛡️ TODOS VIVOS
+                </button>
+              </div>
+
+              <!-- Individual Soldier Check List -->
+              <div>
+                <div class="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                  STATUS INDIVIDUAL DA TROPA (TOQUE PARA ALTERNAR):
+                </div>
+                <div id="verifySoldiersTeamA" class="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verify Team B -->
+          <div class="bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-4 flex flex-col justify-between gap-4">
+            <div>
+              <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
+                <h3 id="verifyNameTeamB" class="text-lg sm:text-xl font-black uppercase text-red-400">
+                  BRAVO
+                </h3>
+                <span class="text-xs font-tactical-mono uppercase text-zinc-400 font-bold">SOBREVIVENTES</span>
+              </div>
+
+              <!-- Numeric Survivor Adjuster -->
+              <div class="flex items-center justify-between gap-3 bg-zinc-900 p-3 rounded-xl border border-zinc-800 mb-3">
+                <button id="btnVerifyDecB" type="button" class="btn-tactical min-h-[56px] w-16 bg-red-600/20 hover:bg-red-600/35 border border-red-500 text-red-300 text-2xl font-tactical-mono">
+                  −
+                </button>
+                <div class="text-center">
+                  <div id="verifyCountTeamB" class="text-5xl font-tactical-mono font-black text-white leading-none">
+                    0
+                  </div>
+                  <span class="text-[11px] font-bold uppercase text-zinc-400">VIVOS NO FINAL</span>
+                </div>
+                <button id="btnVerifyIncB" type="button" class="btn-tactical min-h-[56px] w-16 bg-lime-500/20 hover:bg-lime-500/35 border border-lime-400 text-lime-300 text-2xl font-tactical-mono">
+                  +
+                </button>
+              </div>
+
+              <!-- Quick Action Buttons -->
+              <div class="grid grid-cols-2 gap-2 mb-4">
+                <button id="btnVerifyAllDeadB" type="button" class="btn-tactical min-h-[56px] bg-red-950/60 hover:bg-red-900/70 border border-red-700 text-red-300 text-xs font-black px-2">
+                  💀 TODOS MORTOS (0)
+                </button>
+                <button id="btnVerifyAllAliveB" type="button" class="btn-tactical min-h-[56px] bg-lime-950/60 hover:bg-lime-900/70 border border-lime-700 text-lime-300 text-xs font-black px-2">
+                  🛡️ TODOS VIVOS
+                </button>
+              </div>
+
+              <!-- Individual Soldier Check List -->
+              <div>
+                <div class="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                  STATUS INDIVIDUAL DA TROPA (TOQUE PARA ALTERNAR):
+                </div>
+                <div id="verifySoldiersTeamB" class="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Confirm Button -->
+      <div class="bg-zinc-950 border-t border-zinc-800 p-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <span class="text-xs text-zinc-400 font-semibold">
+          Ao confirmar, o placar de rounds e o Hall of Fame serão atualizados para todos os celulares da sessão.
+        </span>
+        <button
+          id="btnConfirmMatchResult"
+          type="button"
+          class="w-full sm:w-auto btn-tactical min-h-[60px] px-8 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-base sm:text-lg font-black shadow-[0_0_25px_rgba(163,230,53,0.45)]"
+        >
+          ✅ CONFIRMAR RESULTADO E PONTUAR
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 3: RELATÓRIO GERAL & HALL OF FAME (SURVIVAL RANKING MODAL)        -->
+  <!-- ======================================================================= -->
+  <div id="modalReport" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-zinc-700 rounded-2xl w-full max-w-5xl overflow-hidden shadow-2xl my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🏆</span>
+          <div>
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-wider text-white">
+              RELATÓRIO DE COMBATE &amp; HALL OF FAME
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Estatísticas acumuladas do dia e Ranking de Sobrevivência dos Operadores
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseReport" type="button" class="min-h-[48px] min-w-[48px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-4 sm:p-6 space-y-5 max-h-[80dvh] overflow-y-auto">
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
+            <span class="text-xs font-tactical-mono uppercase text-zinc-400 font-bold">PARTIDAS REALIZADAS</span>
+            <div id="reportTotalMatches" class="text-4xl font-tactical-mono font-black text-amber-400 mt-1">0</div>
+          </div>
+
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
+            <span id="reportTeamALabel" class="text-xs font-tactical-mono uppercase text-blue-400 font-bold">VITÓRIAS ALPHA</span>
+            <div id="reportTeamAWins" class="text-4xl font-tactical-mono font-black text-white mt-1">0</div>
+          </div>
+
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
+            <span id="reportTeamBLabel" class="text-xs font-tactical-mono uppercase text-red-400 font-bold">VITÓRIAS BRAVO</span>
+            <div id="reportTeamBWins" class="text-4xl font-tactical-mono font-black text-white mt-1">0</div>
+          </div>
+        </div>
+
+        <!-- Ranking Table ("Quem Mais Ficou Vivo") -->
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-sm sm:text-base font-black uppercase tracking-wider text-lime-400">
+              🎖️ RANKING DE SOBREVIVÊNCIA (QUEM MAIS FICOU VIVO)
+            </h3>
+            <span class="text-xs text-zinc-400">Ordenado por Vezes Vivo e % de Sobrevivência</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-zinc-800 text-[11px] font-tactical-mono uppercase text-zinc-400 bg-zinc-900/60">
+                  <th class="py-3 px-3 sm:px-4">POS</th>
+                  <th class="py-3 px-3 sm:px-4">OPERADOR</th>
+                  <th class="py-3 px-3 sm:px-4">TIME</th>
+                  <th class="py-3 px-3 sm:px-4 text-center">🛡️ VEZES VIVO</th>
+                  <th class="py-3 px-3 sm:px-4 text-center">💀 MORTES (K.I.A.)</th>
+                  <th class="py-3 px-3 sm:px-4 text-center">JOGOS</th>
+                  <th class="py-3 px-3 sm:px-4 min-w-[160px]">% SOBREVIVÊNCIA</th>
+                </tr>
+              </thead>
+              <tbody id="reportRankingBody" class="divide-y divide-zinc-800/70 text-sm">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer with WhatsApp Export -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+        <button
+          id="btnCopyWhatsapp"
+          type="button"
+          class="flex-1 sm:flex-initial btn-tactical min-h-[56px] px-6 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs sm:text-sm font-black shadow-[0_0_20px_rgba(163,230,53,0.35)]"
+        >
+          📋 COPIAR RELATÓRIO PARA WHATSAPP
+        </button>
+
+        <button
+          id="btnDoneReport"
+          type="button"
+          class="btn-tactical min-h-[56px] px-6 bg-zinc-800 hover:bg-zinc-700 text-white text-xs sm:text-sm font-black"
+        >
+          FECHAR
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="tacticalToast" class="fixed bottom-5 right-5 z-50 hidden bg-zinc-900 border-2 border-lime-400 text-white px-4 py-3 rounded-xl shadow-2xl font-bold text-sm flex items-center gap-2">
+    <span id="toastIcon">✅</span>
+    <span id="toastMessage">Ação concluída!</span>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,287 @@
+:root {
+  --bg-deep: #09090b;
+  --bg-panel: #18181b;
+  --border-base: #27272a;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-deep);
+  color: #fafafa;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+input {
+  user-select: text;
+}
+
+/* Font Utilities */
+.font-tactical-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle tactical scanline & grid texture for high sunlight contrast */
+.tactical-bg {
+  background-color: #09090b;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(163, 230, 53, 0.04) 0%, transparent 60%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
+}
+
+/* Automatic Portrait vs Landscape & Large Screens (lg:) Layout */
+.battle-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.panel-center {
+  order: 1;
+}
+
+.panel-team-a {
+  order: 2;
+}
+
+.panel-team-b {
+  order: 3;
+}
+
+@media (orientation: landscape) and (min-width: 640px), (min-width: 1024px) {
+  .battle-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 1.15fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 1.25rem;
+  }
+
+  .panel-team-a {
+    order: 1;
+  }
+
+  .panel-center {
+    order: 2;
+  }
+
+  .panel-team-b {
+    order: 3;
+  }
+}
+
+/* Tactical Team Color Themes */
+.theme-blue {
+  --team-primary: #3b82f6;
+  --team-bright: #60a5fa;
+  --team-bg-soft: rgba(59, 130, 246, 0.14);
+  --team-border: #2563eb;
+  --team-glow: rgba(59, 130, 246, 0.35);
+}
+
+.theme-red {
+  --team-primary: #ef4444;
+  --team-bright: #f87171;
+  --team-bg-soft: rgba(239, 68, 68, 0.14);
+  --team-border: #dc2626;
+  --team-glow: rgba(239, 68, 68, 0.35);
+}
+
+.theme-yellow {
+  --team-primary: #eab308;
+  --team-bright: #facc15;
+  --team-bg-soft: rgba(234, 179, 8, 0.14);
+  --team-border: #ca8a04;
+  --team-glow: rgba(234, 179, 8, 0.35);
+}
+
+.theme-green {
+  --team-primary: #22c55e;
+  --team-bright: #4ade80;
+  --team-bg-soft: rgba(34, 197, 94, 0.14);
+  --team-border: #16a34a;
+  --team-glow: rgba(34, 197, 94, 0.35);
+}
+
+.theme-orange {
+  --team-primary: #f97316;
+  --team-bright: #fb923c;
+  --team-bg-soft: rgba(249, 115, 22, 0.14);
+  --team-border: #ea580c;
+  --team-glow: rgba(249, 115, 22, 0.35);
+}
+
+.theme-purple {
+  --team-primary: #a855f7;
+  --team-bright: #c084fc;
+  --team-bg-soft: rgba(168, 85, 247, 0.14);
+  --team-border: #9333ea;
+  --team-glow: rgba(168, 85, 247, 0.35);
+}
+
+.team-card {
+  border: 2px solid var(--team-border);
+  box-shadow: 0 0 28px -6px var(--team-glow), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.team-header-strip {
+  background: linear-gradient(90deg, var(--team-bg-soft) 0%, rgba(24, 24, 27, 0.9) 100%);
+  border-bottom: 2px solid var(--team-border);
+}
+
+.team-text-accent {
+  color: var(--team-bright);
+}
+
+.team-badge-score {
+  background-color: var(--team-bg-soft);
+  border: 2px solid var(--team-primary);
+  color: #ffffff;
+  text-shadow: 0 0 10px var(--team-glow);
+}
+
+/* Color Swatch Selector */
+.color-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+
+.color-dot:hover {
+  transform: scale(1.1);
+}
+
+.color-dot.active {
+  border-color: #ffffff;
+  transform: scale(1.18);
+  box-shadow: 0 0 12px currentColor;
+}
+
+/* Timer State Visuals */
+@keyframes pulse-prep {
+  0%, 100% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 32px rgba(245, 158, 11, 0.35), inset 0 0 24px rgba(245, 158, 11, 0.12);
+  }
+  50% {
+    border-color: #fbbf24;
+    box-shadow: 0 0 50px rgba(245, 158, 11, 0.65), inset 0 0 35px rgba(245, 158, 11, 0.25);
+  }
+}
+
+@keyframes pulse-danger {
+  0%, 100% {
+    border-color: #ef4444;
+    box-shadow: 0 0 35px rgba(239, 68, 68, 0.45), inset 0 0 24px rgba(239, 68, 68, 0.15);
+  }
+  50% {
+    border-color: #f87171;
+    box-shadow: 0 0 55px rgba(239, 68, 68, 0.8), inset 0 0 40px rgba(239, 68, 68, 0.3);
+  }
+}
+
+.timer-panel-prep {
+  animation: pulse-prep 1.1s infinite ease-in-out;
+}
+
+.timer-panel-combat {
+  border-color: #84cc16 !important;
+  box-shadow: 0 0 30px rgba(132, 204, 22, 0.22), inset 0 0 18px rgba(132, 204, 22, 0.08);
+}
+
+.timer-panel-danger {
+  animation: pulse-danger 0.7s infinite ease-in-out;
+}
+
+/* Ergonomic Glove-Friendly Buttons */
+.btn-tactical {
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 0.75rem;
+  transition: transform 0.08s ease, filter 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-tactical:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-tactical:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Soldier Interactive Badges */
+.soldier-badge {
+  min-height: 48px;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.65rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.soldier-badge:active {
+  transform: scale(0.95);
+}
+
+.soldier-alive {
+  background-color: rgba(34, 197, 94, 0.16);
+  border: 2px solid #22c55e;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+}
+
+.soldier-kia {
+  background-color: rgba(239, 68, 68, 0.12);
+  border: 2px dashed #dc2626;
+  color: #f87171;
+  text-decoration: line-through;
+  opacity: 0.78;
+}
+
+/* Custom Scrollbar for Modals */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
