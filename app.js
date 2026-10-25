@@ -7,6 +7,8 @@
 const STORAGE_KEY = 'tactical_command_state_v2';
 const CLOUD_META_KEY = 'tactical_command_cloud_meta_v2';
 const LOCAL_USERS_KEY = 'tactical_command_users_v2';
+const LOGS_STORAGE_KEY = 'tactical_command_logs_v2';
+const MAX_LOGS_COUNT = 150;
 
 // Master Admin Credentials configured as requested
 const ADMIN_EMAIL = 'rodrigoebsilva@gmail.com';
@@ -129,7 +131,118 @@ let state = loadState();
 let cloudMeta = loadCloudMeta();
 let supabaseClient = null;
 let realtimeChannel = null;
+let realtimeConnectionStatus = 'STANDBY';
 let isApplyingRemoteUpdate = false;
+let currentLogFilter = 'ALL';
+let openOnlineRoomsCache = [];
+
+/* ==========================================================================
+   TACTICAL ERROR & DIAGNOSTIC LOGGER
+   ========================================================================== */
+class TacticalLogger {
+  constructor() {
+    this.logs = this.loadLogs();
+    this.setupGlobalHandlers();
+  }
+
+  loadLogs() {
+    try {
+      const raw = localStorage.getItem(LOGS_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.slice(0, MAX_LOGS_COUNT) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveLogs() {
+    try {
+      localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(this.logs.slice(0, MAX_LOGS_COUNT)));
+    } catch (e) {}
+  }
+
+  log(level, category, message, details = null) {
+    const entry = {
+      id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      timestamp: new Date().toISOString(),
+      level: level || 'INFO', // 'INFO' | 'WARN' | 'ERROR'
+      category: category || 'SYSTEM', // 'SYSTEM' | 'CLOUD' | 'AUTH' | 'TIMER'
+      role: typeof cloudMeta !== 'undefined' ? cloudMeta.role : 'LOCAL',
+      room: typeof cloudMeta !== 'undefined' ? cloudMeta.sessionCode : null,
+      message: String(message || ''),
+      details: details
+        ? typeof details === 'string'
+          ? details
+          : JSON.stringify(details)
+        : null
+    };
+
+    this.logs.unshift(entry);
+    if (this.logs.length > MAX_LOGS_COUNT) {
+      this.logs.length = MAX_LOGS_COUNT;
+    }
+    this.saveLogs();
+    this.updateHeaderBadge();
+
+    if (level === 'ERROR') {
+      console.error(`[TacticalLog][${category}] ${message}`, details || '');
+    } else if (level === 'WARN') {
+      console.warn(`[TacticalLog][${category}] ${message}`, details || '');
+    }
+  }
+
+  info(category, message, details = null) {
+    this.log('INFO', category, message, details);
+  }
+
+  warn(category, message, details = null) {
+    this.log('WARN', category, message, details);
+  }
+
+  error(category, message, details = null) {
+    this.log('ERROR', category, message, details);
+  }
+
+  getErrorCount() {
+    return this.logs.filter((l) => l.level === 'ERROR' || l.level === 'WARN').length;
+  }
+
+  clear() {
+    this.logs = [];
+    this.saveLogs();
+    this.updateHeaderBadge();
+  }
+
+  updateHeaderBadge() {
+    const badge = document.getElementById('headerErrorCountBadge');
+    if (!badge) return;
+    const errCount = this.getErrorCount();
+    if (errCount > 0) {
+      badge.textContent = errCount > 99 ? '99+' : String(errCount);
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  setupGlobalHandlers() {
+    window.addEventListener('error', (event) => {
+      this.error('SYSTEM', `Erro JS: ${event.message || 'Falha inesperada'}`, {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+      });
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason?.message || String(event.reason || 'Promise rejeitada');
+      this.error('SYSTEM', `Promise não tratada: ${reason}`);
+    });
+  }
+}
+
+const tacticalLogger = new TacticalLogger();
 
 // Runtime Match State
 let runtime = {
@@ -165,7 +278,11 @@ function loadState() {
       soldiers: Array.isArray(parsed.soldiers) ? parsed.soldiers : [],
       settings: { ...def.settings, ...(parsed.settings || {}) },
       stats: { ...def.stats, ...(parsed.stats || {}) },
-      liveTimer: { ...def.liveTimer, ...(parsed.liveTimer || {}) }
+      liveTimer: { ...def.liveTimer, ...(parsed.liveTimer || {}) },
+      roomMeta: parsed.roomMeta || null,
+      lastMutationBy: parsed.lastMutationBy || null,
+      lastMutationRole: parsed.lastMutationRole || null,
+      updatedAtMs: parsed.updatedAtMs || 0
     };
   } catch (err) {
     return getDefaultState();
@@ -852,14 +969,27 @@ function sanitizeSessionCode(raw) {
     .slice(0, 16);
 }
 
-// Build serializable state payload for Supabase
-function buildCloudStatePayload(isOnlineOverride = null) {
+// Build serializable state payload for Supabase (Preserving Creator Ownership & Authority)
+function buildCloudStatePayload(isOnlineOverride = null, existingRoomMeta = null) {
+  const baseMeta = existingRoomMeta || state.roomMeta || {};
   const currentOnline =
     isOnlineOverride !== null
       ? Boolean(isOnlineOverride)
-      : state.roomMeta?.isOnline !== undefined
-      ? Boolean(state.roomMeta.isOnline)
+      : baseMeta.isOnline !== undefined
+      ? Boolean(baseMeta.isOnline)
       : true;
+
+  const isHost = cloudMeta.role === 'HOST' || cloudMeta.role === 'LOCAL';
+  const ownerEmail =
+    (isHost && cloudMeta.authUser?.email?.toLowerCase()) ||
+    baseMeta.ownerEmail ||
+    null;
+  const ownerName =
+    (isHost && cloudMeta.authUser?.name) ||
+    baseMeta.ownerName ||
+    'COMANDANTE';
+  const ownerDeviceId =
+    baseMeta.ownerDeviceId || (isHost ? cloudMeta.deviceId : null) || cloudMeta.deviceId;
 
   return {
     teams: state.teams,
@@ -872,11 +1002,14 @@ function buildCloudStatePayload(isOnlineOverride = null) {
     stats: state.stats,
     liveTimer: state.liveTimer,
     roomMeta: {
-      ownerEmail: cloudMeta.authUser?.email?.toLowerCase() || null,
-      ownerName: cloudMeta.authUser?.name || 'COMANDANTE',
-      ownerDeviceId: cloudMeta.deviceId,
+      ownerEmail,
+      ownerName,
+      ownerDeviceId,
       isOnline: currentOnline
-    }
+    },
+    lastMutationBy: cloudMeta.deviceId,
+    lastMutationRole: cloudMeta.role,
+    updatedAtMs: Date.now()
   };
 }
 
@@ -887,21 +1020,186 @@ async function pushStateToCloud() {
   if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
   pushDebounceTimer = setTimeout(async () => {
     try {
-      const payload = buildCloudStatePayload();
-      await supabaseClient
+      // PROTECTION: If current user is a PLAYER (Soldier), NEVER overwrite Host's settings, stats, wins, liveTimer, or roomMeta!
+      if (cloudMeta.role === 'PLAYER') {
+        const { data: latestRow, error: fetchErr } = await supabaseClient
+          .from('tactical_sessions')
+          .select('state')
+          .eq('code', cloudMeta.sessionCode)
+          .maybeSingle();
+
+        if (fetchErr || !latestRow || !latestRow.state) {
+          if (fetchErr) {
+            tacticalLogger.error('CLOUD', `Erro ao buscar sala ${cloudMeta.sessionCode} para sync de soldado`, fetchErr.message);
+          }
+          return;
+        }
+
+        const remoteState = latestRow.state;
+        const remoteSoldiers = Array.isArray(remoteState.soldiers) ? [...remoteState.soldiers] : [];
+        const mySoldierLocal = state.soldiers.find((s) => s.id === cloudMeta.mySoldierId);
+
+        if (mySoldierLocal) {
+          const idx = remoteSoldiers.findIndex((s) => s.id === mySoldierLocal.id);
+          if (idx >= 0) {
+            // Preserve authoritative stats from remote while updating soldier's alive/team/rank
+            remoteSoldiers[idx] = {
+              ...remoteSoldiers[idx],
+              name: mySoldierLocal.name,
+              team: mySoldierLocal.team,
+              rank: mySoldierLocal.rank,
+              alive: mySoldierLocal.alive,
+              stats: remoteSoldiers[idx].stats || mySoldierLocal.stats
+            };
+          } else {
+            remoteSoldiers.push(mySoldierLocal);
+          }
+        }
+
+        const aliveA = remoteSoldiers.filter((s) => s.team === 'A' && s.alive).length;
+        const aliveB = remoteSoldiers.filter((s) => s.team === 'B' && s.alive).length;
+        const totalA = remoteSoldiers.filter((s) => s.team === 'A').length;
+        const totalB = remoteSoldiers.filter((s) => s.team === 'B').length;
+
+        const safeMergedState = {
+          ...remoteState,
+          teams: {
+            A: {
+              ...(remoteState.teams?.A || state.teams.A),
+              aliveCount: totalA > 0 ? aliveA : remoteState.teams?.A?.aliveCount ?? 0
+            },
+            B: {
+              ...(remoteState.teams?.B || state.teams.B),
+              aliveCount: totalB > 0 ? aliveB : remoteState.teams?.B?.aliveCount ?? 0
+            }
+          },
+          soldiers: remoteSoldiers,
+          lastMutationBy: cloudMeta.deviceId,
+          lastMutationRole: 'PLAYER',
+          updatedAtMs: Date.now()
+        };
+
+        const { error: updErr } = await supabaseClient
+          .from('tactical_sessions')
+          .update({
+            state: safeMergedState,
+            updated_at: new Date().toISOString()
+          })
+          .eq('code', cloudMeta.sessionCode);
+
+        if (updErr) {
+          tacticalLogger.error('CLOUD', `Falha ao sincronizar soldado na sala ${cloudMeta.sessionCode}`, updErr.message);
+        }
+        return;
+      }
+
+      // HOST AUTHORITY PUSH: Full state update preserving roomMeta
+      const payload = buildCloudStatePayload(null, state.roomMeta);
+      state.roomMeta = payload.roomMeta;
+      state.lastMutationBy = payload.lastMutationBy;
+      state.lastMutationRole = payload.lastMutationRole;
+      state.updatedAtMs = payload.updatedAtMs;
+
+      const { error } = await supabaseClient
         .from('tactical_sessions')
         .update({
           state: payload,
           updated_at: new Date().toISOString()
         })
         .eq('code', cloudMeta.sessionCode);
+
+      if (error) {
+        tacticalLogger.error('CLOUD', `Falha do Host ao sincronizar sala ${cloudMeta.sessionCode}`, error.message);
+      }
     } catch (err) {
-      console.warn('Falha ao sincronizar estado com Supabase:', err);
+      tacticalLogger.error('CLOUD', 'Exceção ao sincronizar estado com Supabase', err?.message || String(err));
     }
-  }, 80);
+  }, 90);
 }
 
-// Fetch rooms created exclusively by the current creator (other users cannot see them)
+// Fetch open online rooms so Soldiers can join with 1 tap without typing errors
+async function fetchOpenOnlineRooms() {
+  if (!initSupabaseClient()) return [];
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('tactical_sessions')
+      .select('code, state, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(20);
+
+    if (error || !Array.isArray(data)) {
+      if (error) {
+        tacticalLogger.warn('CLOUD', 'Erro ao listar salas online abertas', error.message);
+      }
+      return [];
+    }
+
+    openOnlineRoomsCache = data
+      .filter((row) => row.state?.roomMeta?.isOnline !== false)
+      .map((row) => ({
+        code: row.code,
+        ownerName: row.state?.roomMeta?.ownerName || 'COMANDANTE',
+        soldiersCount: Array.isArray(row.state?.soldiers) ? row.state.soldiers.length : 0,
+        matchesCount: row.state?.stats?.totalMatches || 0
+      }));
+
+    renderOpenRoomsQuickChips();
+    return openOnlineRoomsCache;
+  } catch (err) {
+    tacticalLogger.warn('CLOUD', 'Falha ao buscar salas online', err?.message || String(err));
+    return [];
+  }
+}
+
+function renderOpenRoomsQuickChips() {
+  const containers = [
+    { el: document.getElementById('openRoomsChipsAuthModal'), inputId: 'inputAuthJoinCode' },
+    { el: document.getElementById('openRoomsChipsCloudModal'), inputId: 'inputJoinSessionCode' }
+  ];
+
+  containers.forEach(({ el, inputId }) => {
+    if (!el) return;
+    el.innerHTML = '';
+
+    if (openOnlineRoomsCache.length === 0) {
+      return;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'w-full text-[10px] font-tactical-mono font-bold uppercase text-lime-400';
+    label.textContent = '🟢 SALAS ONLINE ABERTAS AGORA (TOQUE PARA PREENCHER):';
+    el.appendChild(label);
+
+    openOnlineRoomsCache.forEach((rm) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className =
+        'px-2.5 py-1.5 rounded-lg bg-lime-400/15 hover:bg-lime-400/30 border border-lime-400/60 text-lime-300 font-tactical-mono font-black text-xs uppercase flex items-center gap-1.5 transition active:scale-95';
+      chip.innerHTML = `
+        <span>🟢 #${escapeHtml(rm.code)}</span>
+        <span class="text-[10px] text-zinc-300 font-normal">(${rm.soldiersCount} op)</span>
+      `;
+      chip.addEventListener('click', () => {
+        const inp = document.getElementById(inputId);
+        if (inp) {
+          inp.value = rm.code;
+        }
+        const otherInp =
+          inputId === 'inputAuthJoinCode'
+            ? document.getElementById('inputJoinSessionCode')
+            : document.getElementById('inputAuthJoinCode');
+        if (otherInp) {
+          otherInp.value = rm.code;
+        }
+        showToast('🎯', `Sala #${rm.code} selecionada! Digite seu nome e clique em Entrar.`);
+      });
+      el.appendChild(chip);
+    });
+  });
+}
+
+// Fetch rooms created exclusively by the current creator (other users cannot see them in management)
 async function fetchMyCreatedRooms() {
   if (!initSupabaseClient()) return [];
 
@@ -912,16 +1210,24 @@ async function fetchMyCreatedRooms() {
       .order('updated_at', { ascending: false });
 
     if (error || !Array.isArray(data)) {
+      if (error) {
+        tacticalLogger.error('CLOUD', 'Erro ao buscar salas do criador', error.message);
+      }
       renderMyCreatedRoomsList();
       return [];
     }
 
     const userEmail = cloudMeta.authUser?.email?.toLowerCase();
+    const isAdmin = Boolean(cloudMeta.authUser?.isAdmin);
+
     const myRooms = data
       .filter((row) => {
         const rowOwnerEmail = row.state?.roomMeta?.ownerEmail?.toLowerCase();
         if (userEmail && rowOwnerEmail && rowOwnerEmail === userEmail) return true;
-        return row.host_id === cloudMeta.deviceId;
+        if (row.host_id === cloudMeta.deviceId) return true;
+        // Master Admin or orphan rooms where ownerEmail was null in previous test
+        if (isAdmin && !rowOwnerEmail) return true;
+        return false;
       })
       .map((row) => ({
         code: row.code,
@@ -937,6 +1243,7 @@ async function fetchMyCreatedRooms() {
     renderMyCreatedRoomsList();
     return myRooms;
   } catch (err) {
+    tacticalLogger.error('CLOUD', 'Exceção em fetchMyCreatedRooms', err?.message || String(err));
     renderMyCreatedRoomsList();
     return [];
   }
@@ -954,6 +1261,7 @@ async function toggleMyRoomOnlineStatus(roomCode) {
       .maybeSingle();
 
     if (error || !data) {
+      tacticalLogger.error('CLOUD', `Sala ${roomCode} não encontrada ao alternar status`, error?.message);
       showToast('❌', 'Sala não encontrada no banco.');
       return;
     }
@@ -961,7 +1269,9 @@ async function toggleMyRoomOnlineStatus(roomCode) {
     const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
     const userEmail = cloudMeta.authUser?.email?.toLowerCase();
     const isOwner =
-      (userEmail && rowOwnerEmail === userEmail) || data.host_id === cloudMeta.deviceId;
+      Boolean(cloudMeta.authUser?.isAdmin) ||
+      (userEmail && rowOwnerEmail === userEmail) ||
+      data.host_id === cloudMeta.deviceId;
 
     if (!isOwner) {
       showToast('🔒', 'Acesso negado: Apenas o criador da sala pode alterar o status Online/Offline!');
@@ -975,6 +1285,7 @@ async function toggleMyRoomOnlineStatus(roomCode) {
       ...(data.state || {}),
       roomMeta: {
         ...(data.state?.roomMeta || {}),
+        ownerEmail: rowOwnerEmail || userEmail || null,
         isOnline: nextOnline
       }
     };
@@ -988,6 +1299,7 @@ async function toggleMyRoomOnlineStatus(roomCode) {
       .eq('code', roomCode);
 
     if (updErr) {
+      tacticalLogger.error('CLOUD', `Erro ao atualizar status Online/Offline da sala ${roomCode}`, updErr.message);
       showToast('⚠️', 'Erro ao atualizar status da sala.');
       return;
     }
@@ -997,13 +1309,16 @@ async function toggleMyRoomOnlineStatus(roomCode) {
       saveState(true);
     }
 
+    tacticalLogger.info('CLOUD', `Sala ${roomCode} alterada para ${nextOnline ? 'ONLINE' : 'OFFLINE'}`);
     await fetchMyCreatedRooms();
+    await fetchOpenOnlineRooms();
     renderAll();
     showToast(
       nextOnline ? '🟢' : '🔴',
       `Sala ${roomCode} agora está ${nextOnline ? 'ONLINE (Aberta)' : 'OFFLINE (Fechada)'}!`
     );
   } catch (err) {
+    tacticalLogger.error('CLOUD', `Exceção ao alternar status da sala ${roomCode}`, err?.message);
     showToast('⚠️', 'Falha ao alternar status da sala.');
   }
 }
@@ -1029,7 +1344,9 @@ async function deleteMyCreatedRoom(roomCode) {
     const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
     const userEmail = cloudMeta.authUser?.email?.toLowerCase();
     const isOwner =
-      (userEmail && rowOwnerEmail === userEmail) || data.host_id === cloudMeta.deviceId;
+      Boolean(cloudMeta.authUser?.isAdmin) ||
+      (userEmail && rowOwnerEmail === userEmail) ||
+      data.host_id === cloudMeta.deviceId;
 
     if (!isOwner) {
       showToast('🔒', 'Apenas o criador da sala pode excluí-la!');
@@ -1042,6 +1359,7 @@ async function deleteMyCreatedRoom(roomCode) {
       .eq('code', roomCode);
 
     if (error) {
+      tacticalLogger.error('CLOUD', `Falha ao excluir sala ${roomCode}`, error.message);
       showToast('⚠️', 'Não foi possível excluir a sala.');
       return;
     }
@@ -1050,14 +1368,17 @@ async function deleteMyCreatedRoom(roomCode) {
       leaveCloudSession();
     }
 
+    tacticalLogger.info('CLOUD', `Sala ${roomCode} excluída pelo criador`);
     await fetchMyCreatedRooms();
+    await fetchOpenOnlineRooms();
     showToast('🗑️', `Sala ${roomCode} excluída permanentemente!`);
   } catch (err) {
+    tacticalLogger.error('CLOUD', `Exceção ao excluir sala ${roomCode}`, err?.message);
     showToast('⚠️', 'Erro ao excluir sala.');
   }
 }
 
-// Create a new session (or overwrite if same creator)
+// Create a new session (or safely resume if room already exists for same creator!)
 async function createCloudSession() {
   if (!cloudMeta.authUser) {
     document.getElementById('modalCloudSession').classList.add('hidden');
@@ -1082,16 +1403,22 @@ async function createCloudSession() {
   syncRuntimeToLiveTimer();
 
   try {
-    const { data: existing } = await supabaseClient
+    const { data: existing, error: checkErr } = await supabaseClient
       .from('tactical_sessions')
       .select('code, host_id, state')
       .eq('code', inputCode)
       .maybeSingle();
 
+    if (checkErr) {
+      tacticalLogger.error('CLOUD', `Erro ao verificar sala ${inputCode}`, checkErr.message);
+    }
+
     if (existing) {
       const existingOwnerEmail = existing.state?.roomMeta?.ownerEmail?.toLowerCase();
       const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
       const isSameOwner =
+        Boolean(cloudMeta.authUser?.isAdmin) ||
+        !existingOwnerEmail ||
         (currentEmail && existingOwnerEmail === currentEmail) ||
         existing.host_id === cloudMeta.deviceId;
 
@@ -1099,15 +1426,46 @@ async function createCloudSession() {
         showToast('⚠️', `O código ${inputCode} já pertence a outro criador! Clique em 🎲 GERAR.`);
         return;
       }
+
+      // PROTECTION: If the room already exists and has data, resume it as HOST instead of wiping reports/settings!
+      const hasExistingData =
+        (existing.state?.stats?.totalMatches || 0) > 0 ||
+        (Array.isArray(existing.state?.soldiers) && existing.state.soldiers.length > 0);
+
+      if (hasExistingData && cloudMeta.sessionCode !== inputCode) {
+        cloudMeta.sessionCode = inputCode;
+        cloudMeta.role = 'HOST';
+        applyRemoteCloudState(existing.state, { forceFullSync: true });
+        state.roomMeta = {
+          ownerEmail: currentEmail || existingOwnerEmail || null,
+          ownerName: cloudMeta.authUser?.name || existing.state?.roomMeta?.ownerName || 'COMANDANTE',
+          ownerDeviceId: cloudMeta.deviceId,
+          isOnline: true
+        };
+        saveCloudMeta();
+        saveState(false);
+        await fetchMyCreatedRooms();
+        await fetchOpenOnlineRooms();
+        subscribeToCloudSession(inputCode);
+        updateUrlRoomParam(inputCode);
+        renderAll();
+        renderCloudModal();
+        document.getElementById('modalCloudSession').classList.add('hidden');
+        document.getElementById('modalAuth').classList.add('hidden');
+        tacticalLogger.info('CLOUD', `Sala existente ${inputCode} retomada sem zerar relatórios/tempo`);
+        showToast('👑', `Sala ${inputCode} retomada com relatórios e configurações preservados!`);
+        return;
+      }
     }
 
+    // Creating a brand-new room: reset only if switching away from an older room
     state.roomMeta = {
       ownerEmail: cloudMeta.authUser?.email?.toLowerCase() || null,
       ownerName: cloudMeta.authUser?.name || 'COMANDANTE',
       ownerDeviceId: cloudMeta.deviceId,
       isOnline: true
     };
-    const payload = buildCloudStatePayload(true);
+    const payload = buildCloudStatePayload(true, state.roomMeta);
 
     const { error } = await supabaseClient.from('tactical_sessions').upsert(
       {
@@ -1120,9 +1478,9 @@ async function createCloudSession() {
     );
 
     if (error) {
-      console.error(error);
+      tacticalLogger.error('CLOUD', `Erro ao criar sala ${inputCode} no Supabase`, error.message);
       document.getElementById('supabaseConfigAccordion').open = true;
-      showToast('⚠️', 'Erro ao criar sala no Supabase. Verifique se executou o script SQL!');
+      showToast('⚠️', 'Erro ao criar sala no Supabase. Verifique os Logs (🐞)!');
       return;
     }
 
@@ -1130,30 +1488,36 @@ async function createCloudSession() {
     cloudMeta.role = 'HOST';
     saveCloudMeta();
 
+    tacticalLogger.info('CLOUD', `Nova sala ${inputCode} criada pelo Host (${cloudMeta.authUser?.email})`);
     await fetchMyCreatedRooms();
+    await fetchOpenOnlineRooms();
     subscribeToCloudSession(inputCode);
     updateUrlRoomParam(inputCode);
     renderAll();
     renderCloudModal();
     showToast('🚀', `Sessão ${inputCode} criada e ONLINE! Compartilhe o código.`);
   } catch (err) {
-    console.error(err);
+    tacticalLogger.error('CLOUD', 'Exceção ao criar sala no Supabase', err?.message || String(err));
     showToast('⚠️', 'Erro de conexão com o Supabase.');
   }
 }
 
 // Join an existing session as Operator/Participant (or recover Host if creator)
-async function joinCloudSession() {
+async function joinCloudSession(customCodeOverride = null) {
   if (!initSupabaseClient()) {
     document.getElementById('supabaseConfigAccordion').open = true;
     showToast('⚙️', 'Configure a URL e Anon Key do Supabase abaixo primeiro!');
-    return;
+    return false;
   }
 
-  const code = sanitizeSessionCode(document.getElementById('inputJoinSessionCode').value);
+  const rawCode =
+    customCodeOverride ||
+    document.getElementById('inputJoinSessionCode')?.value ||
+    document.getElementById('inputAuthJoinCode')?.value;
+  let code = sanitizeSessionCode(rawCode);
   if (!code) {
-    showToast('⚠️', 'Digite o código da sala para entrar!');
-    return;
+    showToast('⚠️', 'Digite ou selecione o código da sala para entrar!');
+    return false;
   }
 
   let operatorName = (document.getElementById('inputJoinOperatorName').value || '')
@@ -1165,37 +1529,75 @@ async function joinCloudSession() {
   const chosenTeam = cloudMeta.joinSelectedTeam === 'B' ? 'B' : 'A';
 
   try {
-    const { data, error } = await supabaseClient
+    let { data, error } = await supabaseClient
       .from('tactical_sessions')
       .select('*')
       .eq('code', code)
       .maybeSingle();
 
+    // Smart Fuzzy Match: if user typed "ALPHA42" instead of "ALPHA-42", find it automatically!
+    if (!data && !error) {
+      const normalizedTarget = code.replace(/[^A-Z0-9]/g, '');
+      const { data: allRows } = await supabaseClient
+        .from('tactical_sessions')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(30);
+
+      if (Array.isArray(allRows)) {
+        const fuzzyMatch = allRows.find(
+          (r) => String(r.code || '').replace(/[^A-Z0-9]/g, '') === normalizedTarget
+        );
+        if (fuzzyMatch) {
+          data = fuzzyMatch;
+          code = fuzzyMatch.code;
+        }
+      }
+    }
+
     if (error || !data) {
-      showToast('❌', `Sessão "${code}" não encontrada! Verifique o código.`);
-      return;
+      tacticalLogger.warn('CLOUD', `Tentativa de entrar em sala inexistente: "${code}"`, error?.message);
+      await fetchOpenOnlineRooms();
+      showToast('❌', `Sala "${code}" não encontrada! Toque em uma das salas online listadas.`);
+      return false;
     }
 
     const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
     const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
     const isCreator =
+      Boolean(cloudMeta.authUser?.isAdmin && (!rowOwnerEmail || rowOwnerEmail === currentEmail)) ||
       (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
       data.host_id === cloudMeta.deviceId;
 
     const isRoomOnline = data.state?.roomMeta?.isOnline !== false;
     if (!isRoomOnline && !isCreator) {
+      tacticalLogger.warn('CLOUD', `Tentativa de entrada bloqueada: sala ${code} está OFFLINE`);
       showToast('🔴', `A sala "${code}" está OFFLINE no momento (desativada pelo criador).`);
-      return;
+      return false;
     }
 
     cloudMeta.sessionCode = code;
     cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
 
-    // Apply fetched room state
-    applyRemoteCloudState(data.state);
+    // Apply fetched room state with full sync
+    applyRemoteCloudState(data.state, { forceFullSync: true });
 
-    // Auto-enlist operator if name was entered
-    if (operatorName) {
+    // Restore roomMeta if creator re-entered
+    if (isCreator && cloudMeta.authUser) {
+      state.roomMeta = {
+        ...(data.state?.roomMeta || {}),
+        ownerEmail: cloudMeta.authUser.email.toLowerCase(),
+        ownerName: cloudMeta.authUser.name,
+        ownerDeviceId: data.host_id || cloudMeta.deviceId,
+        isOnline: data.state?.roomMeta?.isOnline !== false
+      };
+    }
+
+    // Auto-enlist operator if name was entered (for Players, or if Host explicitly typed a soldier name in Join box)
+    const shouldEnlist =
+      operatorName && (!isCreator || document.getElementById('inputJoinOperatorName').value.trim());
+
+    if (shouldEnlist) {
       let existingSoldier = state.soldiers.find(
         (s) => s.id === cloudMeta.mySoldierId || s.name.toUpperCase() === operatorName
       );
@@ -1220,6 +1622,8 @@ async function joinCloudSession() {
       syncAliveCountFromRoster('A');
       syncAliveCountFromRoster('B');
       saveState(false);
+    } else if (isCreator) {
+      saveState(false);
     }
 
     saveCloudMeta();
@@ -1228,16 +1632,26 @@ async function joinCloudSession() {
     renderAll();
     renderCloudModal();
     document.getElementById('modalCloudSession').classList.add('hidden');
+    document.getElementById('modalAuth').classList.add('hidden');
+
+    tacticalLogger.info(
+      'CLOUD',
+      `Conectado à sala #${code} como ${cloudMeta.role} (${operatorName || 'COMANDANTE'})`
+    );
 
     showToast(
       '📡',
-      operatorName
-        ? `Conectado à sala ${code} como ${operatorName}!`
-        : `Conectado à sala ${code} em tempo real!`
+      isCreator
+        ? `Comando da sala #${code} assumido em tempo real!`
+        : operatorName
+        ? `Conectado à sala #${code} como ${operatorName}!`
+        : `Conectado à sala #${code} em tempo real!`
     );
+    return true;
   } catch (err) {
-    console.error(err);
-    showToast('⚠️', 'Erro ao entrar na sessão.');
+    tacticalLogger.error('CLOUD', `Exceção ao entrar na sala ${code}`, err?.message || String(err));
+    showToast('⚠️', 'Erro ao entrar na sessão. Verifique os Logs (🐞).');
+    return false;
   }
 }
 
@@ -1248,6 +1662,8 @@ function subscribeToCloudSession(code) {
     supabaseClient.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
+
+  realtimeConnectionStatus = 'CONNECTING...';
 
   realtimeChannel = supabaseClient
     .channel(`room_${code}`)
@@ -1261,6 +1677,7 @@ function subscribeToCloudSession(code) {
       },
       (payload) => {
         if (payload.eventType === 'DELETE') {
+          tacticalLogger.warn('CLOUD', `A sala ${code} foi excluída remotamente`);
           showToast('🗑️', `A sala ${code} foi encerrada e excluída pelo criador.`);
           leaveCloudSession();
           return;
@@ -1268,57 +1685,126 @@ function subscribeToCloudSession(code) {
         if (payload.new && payload.new.state) {
           const isOnline = payload.new.state?.roomMeta?.isOnline !== false;
           if (!isOnline && cloudMeta.role !== 'HOST') {
+            tacticalLogger.info('CLOUD', `Sala ${code} colocada em modo OFFLINE pelo criador`);
             showToast('🔴', `O criador colocou a sala ${code} em modo OFFLINE.`);
             leaveCloudSession();
             return;
           }
-          applyRemoteCloudState(payload.new.state);
+          applyRemoteCloudState(payload.new.state, { forceFullSync: false });
         }
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      realtimeConnectionStatus = status || 'UNKNOWN';
+      if (status === 'SUBSCRIBED') {
+        tacticalLogger.info('CLOUD', `WebSocket Realtime conectado na sala #${code}`);
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        tacticalLogger.error(
+          'CLOUD',
+          `Falha no canal Realtime da sala #${code}: ${status}`,
+          err?.message || ''
+        );
+      }
+      renderLogsModal();
+    });
 }
 
-function applyRemoteCloudState(remoteState) {
+function applyRemoteCloudState(remoteState, options = { forceFullSync: false }) {
   if (!remoteState) return;
-  isApplyingRemoteUpdate = true;
 
-  const prevMuted = state.settings.muted;
-  const def = getDefaultState();
-
-  state.teams = {
-    A: { ...def.teams.A, ...(remoteState.teams?.A || {}) },
-    B: { ...def.teams.B, ...(remoteState.teams?.B || {}) }
-  };
-  state.soldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
-  state.settings = {
-    ...def.settings,
-    ...(remoteState.settings || {}),
-    muted: prevMuted
-  };
-  state.stats = { ...def.stats, ...(remoteState.stats || {}) };
-  state.liveTimer = { ...def.liveTimer, ...(remoteState.liveTimer || {}) };
-
-  // Synchronize local chronometer with shared liveTimer
-  syncRuntimeFromRemoteLiveTimer();
-
-  // If Host is in COMBAT and a player just marked themselves KIA causing team aliveCount === 0, trigger auto-elimination
-  if (isHostOrLocal() && runtime.phase === 'COMBAT') {
-    if (state.teams.A.aliveCount === 0 && getTeamSoldiers('A').length > 0) {
-      isApplyingRemoteUpdate = false;
-      finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.A.name} ZERADO)`, 'A');
-      return;
-    }
-    if (state.teams.B.aliveCount === 0 && getTeamSoldiers('B').length > 0) {
-      isApplyingRemoteUpdate = false;
-      finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.B.name} ZERADO)`, 'B');
-      return;
-    }
+  // 1. Ignore delayed WebSocket echo from our own device so rapid clicks (-1 MIN / +1 MIN) never revert!
+  if (!options.forceFullSync && remoteState.lastMutationBy && remoteState.lastMutationBy === cloudMeta.deviceId) {
+    return;
   }
 
-  saveState(true);
-  renderAll();
-  isApplyingRemoteUpdate = false;
+  isApplyingRemoteUpdate = true;
+
+  try {
+    const prevMuted = state.settings.muted;
+    const def = getDefaultState();
+
+    // 2. PROTECTION FOR HOST: If we are HOST and the update came from a PLAYER (Soldier joining or marking KIA),
+    // ONLY update soldiers and aliveCount! NEVER overwrite Host's time settings, reports, wins, or running timer!
+    if (
+      !options.forceFullSync &&
+      cloudMeta.role === 'HOST' &&
+      remoteState.lastMutationRole === 'PLAYER'
+    ) {
+      const incomingSoldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
+      // Merge soldiers while protecting authoritative match stats from Host
+      state.soldiers = incomingSoldiers.map((inc) => {
+        const localExisting = state.soldiers.find((s) => s.id === inc.id);
+        return {
+          ...inc,
+          stats:
+            (localExisting?.stats?.matches || 0) >= (inc.stats?.matches || 0)
+              ? localExisting.stats
+              : inc.stats || { survived: 0, kia: 0, matches: 0 }
+        };
+      });
+
+      syncAliveCountFromRoster('A');
+      syncAliveCountFromRoster('B');
+
+      // Check auto-elimination if Host is in active COMBAT
+      if (runtime.phase === 'COMBAT') {
+        if (state.teams.A.aliveCount === 0 && getTeamSoldiers('A').length > 0) {
+          isApplyingRemoteUpdate = false;
+          finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.A.name} ZERADO)`, 'A');
+          return;
+        }
+        if (state.teams.B.aliveCount === 0 && getTeamSoldiers('B').length > 0) {
+          isApplyingRemoteUpdate = false;
+          finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.B.name} ZERADO)`, 'B');
+          return;
+        }
+      }
+
+      saveState(true);
+      renderAll();
+      isApplyingRemoteUpdate = false;
+      return;
+    }
+
+    // 3. Full state sync (for PLAYER devices or initial room load)
+    state.teams = {
+      A: { ...def.teams.A, ...(remoteState.teams?.A || {}) },
+      B: { ...def.teams.B, ...(remoteState.teams?.B || {}) }
+    };
+    state.soldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
+    state.settings = {
+      ...def.settings,
+      ...(remoteState.settings || {}),
+      muted: prevMuted
+    };
+    state.stats = { ...def.stats, ...(remoteState.stats || {}) };
+    state.liveTimer = { ...def.liveTimer, ...(remoteState.liveTimer || {}) };
+    if (remoteState.roomMeta) {
+      state.roomMeta = { ...(state.roomMeta || {}), ...remoteState.roomMeta };
+    }
+
+    // Synchronize local chronometer with shared liveTimer
+    syncRuntimeFromRemoteLiveTimer();
+
+    // If Host is in COMBAT and a team hit 0 alive, trigger auto-elimination
+    if (isHostOrLocal() && runtime.phase === 'COMBAT') {
+      if (state.teams.A.aliveCount === 0 && getTeamSoldiers('A').length > 0) {
+        isApplyingRemoteUpdate = false;
+        finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.A.name} ZERADO)`, 'A');
+        return;
+      }
+      if (state.teams.B.aliveCount === 0 && getTeamSoldiers('B').length > 0) {
+        isApplyingRemoteUpdate = false;
+        finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.B.name} ZERADO)`, 'B');
+        return;
+      }
+    }
+
+    saveState(true);
+    renderAll();
+  } finally {
+    isApplyingRemoteUpdate = false;
+  }
 }
 
 function leaveCloudSession() {
@@ -1875,6 +2361,11 @@ function confirmMatchResultAndScore() {
       : winner === 'B'
       ? `Vitória de ${state.teams.B.name} confirmada (+1 Ponto)!`
       : 'Empate Tático registrado! Pronto para o próximo round.';
+  tacticalLogger.info(
+    'TIMER',
+    `Round #${state.stats.totalMatches} finalizado e salvo no relatório (${msg})`,
+    { countA, countB, totalMatches: state.stats.totalMatches }
+  );
   showToast('🏆', msg);
 }
 
@@ -2229,6 +2720,18 @@ function renderAuthModal() {
   const loggedOutView = document.getElementById('authLoggedOutView');
   if (!loggedInView || !loggedOutView) return;
 
+  // Show Active Room Quick Resume Banner if already connected to a session
+  const activeBanner = document.getElementById('authActiveRoomQuickBanner');
+  const activeCodeText = document.getElementById('authActiveRoomCodeText');
+  if (activeBanner && activeCodeText) {
+    if (cloudMeta.sessionCode) {
+      activeBanner.classList.remove('hidden');
+      activeCodeText.textContent = `#${cloudMeta.sessionCode} (${cloudMeta.role === 'HOST' ? 'JUIZ' : 'SOLDADO'})`;
+    } else {
+      activeBanner.classList.add('hidden');
+    }
+  }
+
   // Update team button labels in Quick Join inside Auth Modal
   const btnAuthJoinA = document.getElementById('btnAuthJoinTeamA');
   const btnAuthJoinB = document.getElementById('btnAuthJoinTeamB');
@@ -2266,6 +2769,7 @@ function renderAuthModal() {
       badge.className =
         'inline-block px-2.5 py-0.5 rounded bg-sky-400 text-zinc-950 font-tactical-mono font-black text-xs uppercase';
     }
+    renderMyCreatedRoomsList();
   } else {
     loggedInView.classList.add('hidden');
     loggedOutView.classList.remove('hidden');
@@ -2274,9 +2778,54 @@ function renderAuthModal() {
 
 function renderMyCreatedRoomsList() {
   const container = document.getElementById('myCreatedRoomsList');
-  if (!container) return;
-
+  const authQuickContainer = document.getElementById('authQuickMyRoomsList');
   const rooms = cloudMeta.myCreatedRooms || [];
+
+  // Render 1-Click Quick List inside Main Login Screen (#authLoggedInView)
+  if (authQuickContainer) {
+    authQuickContainer.innerHTML = '';
+    if (rooms.length === 0) {
+      authQuickContainer.innerHTML = `
+        <div class="py-2.5 px-3 rounded-lg border border-dashed border-zinc-800 text-center text-[11px] text-zinc-500">
+          Nenhuma sala criada ainda. Clique em "🚀 CRIAR / GERENCIAR SALAS" abaixo para abrir uma nova!
+        </div>
+      `;
+    } else {
+      rooms.forEach((rm) => {
+        const isCurrent = cloudMeta.sessionCode === rm.code;
+        const item = document.createElement('div');
+        item.className = `flex items-center justify-between gap-2 p-2 rounded-xl border ${
+          isCurrent ? 'bg-zinc-900 border-lime-400' : 'bg-zinc-900/80 border-zinc-800'
+        }`;
+        item.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="px-2 py-0.5 rounded font-tactical-mono font-black text-xs ${
+              rm.isOnline ? 'bg-lime-400/20 text-lime-400' : 'bg-red-500/20 text-red-400'
+            }">
+              #${escapeHtml(rm.code)}
+            </span>
+            <span class="text-[11px] text-zinc-400 font-tactical-mono truncate">
+              ${rm.soldiersCount} op • ${rm.matchesCount} j
+            </span>
+          </div>
+          <button
+            type="button"
+            data-quick-enter-room="${escapeHtml(rm.code)}"
+            class="shrink-0 min-h-[36px] px-3 rounded-lg bg-lime-400 hover:bg-lime-300 text-zinc-950 font-black text-xs uppercase"
+          >
+            ${isCurrent ? '🟢 ABRIR SALA' : '👑 ENTRAR'}
+          </button>
+        `;
+        item.querySelector('[data-quick-enter-room]').addEventListener('click', async () => {
+          document.getElementById('inputJoinSessionCode').value = rm.code;
+          await joinCloudSession(rm.code);
+        });
+        authQuickContainer.appendChild(item);
+      });
+    }
+  }
+
+  if (!container) return;
   container.innerHTML = '';
 
   if (rooms.length === 0) {
@@ -2433,6 +2982,7 @@ function renderCloudModal() {
   }
 
   initSupabaseClient();
+  fetchOpenOnlineRooms();
   if (cloudMeta.authUser) {
     fetchMyCreatedRooms();
   }
@@ -2912,7 +3462,148 @@ function renderReportModal() {
   });
 }
 
+function renderLogsModal() {
+  tacticalLogger.updateHeaderBadge();
+
+  const roleEl = document.getElementById('diagRoleText');
+  const roomEl = document.getElementById('diagRoomText');
+  const wsEl = document.getElementById('diagRealtimeStatusText');
+  const errEl = document.getElementById('diagErrorsCountText');
+  const listEl = document.getElementById('logsContainerList');
+
+  if (!listEl) return;
+
+  if (roleEl) roleEl.textContent = cloudMeta.role || 'LOCAL';
+  if (roomEl) roomEl.textContent = cloudMeta.sessionCode ? `#${cloudMeta.sessionCode}` : 'NENHUMA';
+  if (wsEl) {
+    wsEl.textContent = realtimeConnectionStatus;
+    wsEl.className = `text-sm font-tactical-mono font-black ${
+      realtimeConnectionStatus === 'SUBSCRIBED'
+        ? 'text-lime-400'
+        : realtimeConnectionStatus.includes('ERROR') || realtimeConnectionStatus.includes('TIMED')
+        ? 'text-red-400'
+        : 'text-amber-300'
+    }`;
+  }
+  if (errEl) errEl.textContent = String(tacticalLogger.getErrorCount());
+
+  // Highlight active filter button
+  document.querySelectorAll('[data-log-filter]').forEach((btn) => {
+    const f = btn.getAttribute('data-log-filter');
+    if (f === currentLogFilter) {
+      btn.className = 'px-3 py-1.5 rounded-lg bg-sky-400 text-zinc-950 font-black text-xs uppercase';
+    } else {
+      btn.className =
+        'px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-300 border border-zinc-700 font-black text-xs uppercase hover:text-white';
+    }
+  });
+
+  const filtered = tacticalLogger.logs.filter((entry) => {
+    if (currentLogFilter === 'ERROR') {
+      return entry.level === 'ERROR' || entry.level === 'WARN';
+    }
+    if (currentLogFilter === 'CLOUD') {
+      return entry.category === 'CLOUD';
+    }
+    return true;
+  });
+
+  listEl.innerHTML = '';
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = `
+      <div class="py-8 text-center text-zinc-500">
+        Nenhum registro encontrado para este filtro. O sistema está operando normalmente!
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach((entry) => {
+    const timeStr = new Date(entry.timestamp).toLocaleTimeString('pt-BR');
+    const isErr = entry.level === 'ERROR';
+    const isWarn = entry.level === 'WARN';
+
+    const row = document.createElement('div');
+    row.className = `p-2.5 rounded-lg border ${
+      isErr
+        ? 'bg-red-950/40 border-red-700/80 text-red-200'
+        : isWarn
+        ? 'bg-amber-950/30 border-amber-700/70 text-amber-200'
+        : 'bg-zinc-900/80 border-zinc-800 text-zinc-200'
+    }`;
+
+    row.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <div class="flex items-center gap-1.5">
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
+            isErr
+              ? 'bg-red-600 text-white'
+              : isWarn
+              ? 'bg-amber-500 text-zinc-950'
+              : 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+          }">
+            ${escapeHtml(entry.level)} • ${escapeHtml(entry.category)}
+          </span>
+          <span class="text-[10px] text-zinc-400">
+            [${escapeHtml(entry.role)}${entry.room ? ' #' + escapeHtml(entry.room) : ''}]
+          </span>
+        </div>
+        <span class="text-[10px] text-zinc-400">${escapeHtml(timeStr)}</span>
+      </div>
+      <div class="font-bold text-xs break-words">${escapeHtml(entry.message)}</div>
+      ${
+        entry.details
+          ? `<div class="mt-1 text-[11px] text-zinc-400 bg-black/40 p-1.5 rounded break-all">${escapeHtml(
+              entry.details
+            )}</div>`
+          : ''
+      }
+    `;
+    listEl.appendChild(row);
+  });
+}
+
+async function runCloudConnectionDiagnostic() {
+  if (!initSupabaseClient()) {
+    tacticalLogger.error('CLOUD', 'Diagnóstico falhou: Cliente Supabase não inicializado.');
+    renderLogsModal();
+    showToast('❌', 'Supabase não inicializado. Verifique URL/Key.');
+    return;
+  }
+
+  const startMs = Date.now();
+  try {
+    const { data, error } = await supabaseClient
+      .from('tactical_sessions')
+      .select('code, updated_at')
+      .limit(5);
+
+    const latency = Date.now() - startMs;
+    if (error) {
+      tacticalLogger.error('CLOUD', `Falha no teste de conexão Supabase (${latency}ms)`, error.message);
+      renderLogsModal();
+      showToast('❌', `Erro no banco: ${error.message}`);
+      return;
+    }
+
+    tacticalLogger.info(
+      'CLOUD',
+      `Diagnóstico Supabase OK! Latência: ${latency}ms • Salas ativas lidas: ${
+        Array.isArray(data) ? data.length : 0
+      }`
+    );
+    renderLogsModal();
+    showToast('🟢', `Conexão Supabase OK! Latência: ${latency}ms.`);
+  } catch (err) {
+    tacticalLogger.error('CLOUD', 'Exceção durante teste de conexão', err?.message || String(err));
+    renderLogsModal();
+    showToast('⚠️', 'Falha de rede ao testar Supabase.');
+  }
+}
+
 function renderAll() {
+  tacticalLogger.updateHeaderBadge();
   renderHeaderAuthButton();
   renderAuthModal();
   renderRankSelectorButtons();
@@ -3177,7 +3868,7 @@ function bindEvents() {
   });
 
   document.getElementById('btnCreateCloudSession').addEventListener('click', createCloudSession);
-  document.getElementById('btnJoinCloudSession').addEventListener('click', joinCloudSession);
+  document.getElementById('btnJoinCloudSession').addEventListener('click', () => joinCloudSession());
   document.getElementById('btnLeaveCloudSession').addEventListener('click', leaveCloudSession);
 
   document.getElementById('btnCopySessionLink').addEventListener('click', () => {
@@ -3281,6 +3972,87 @@ function bindEvents() {
   document.getElementById('btnCloseHelp').addEventListener('click', closeHelp);
   document.getElementById('btnDoneHelp').addEventListener('click', closeHelp);
 
+  // System & Error Logs Modal Controls
+  const openLogs = () => {
+    renderLogsModal();
+    document.getElementById('modalLogs').classList.remove('hidden');
+  };
+  const closeLogs = () => {
+    document.getElementById('modalLogs').classList.add('hidden');
+  };
+  const btnOpenLogs = document.getElementById('btnOpenLogs');
+  if (btnOpenLogs) btnOpenLogs.addEventListener('click', openLogs);
+  const btnCloseLogs = document.getElementById('btnCloseLogs');
+  if (btnCloseLogs) btnCloseLogs.addEventListener('click', closeLogs);
+  const btnDoneLogs = document.getElementById('btnDoneLogs');
+  if (btnDoneLogs) btnDoneLogs.addEventListener('click', closeLogs);
+
+  document.querySelectorAll('[data-log-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      currentLogFilter = btn.getAttribute('data-log-filter') || 'ALL';
+      renderLogsModal();
+    });
+  });
+
+  const btnRunDiag = document.getElementById('btnRunCloudDiag');
+  if (btnRunDiag) {
+    btnRunDiag.addEventListener('click', runCloudConnectionDiagnostic);
+  }
+
+  const btnCopyLogs = document.getElementById('btnCopyLogs');
+  if (btnCopyLogs) {
+    btnCopyLogs.addEventListener('click', () => {
+      const lines = tacticalLogger.logs.map((l) => {
+        const dt = new Date(l.timestamp).toLocaleString('pt-BR');
+        return `[${dt}] [${l.level}/${l.category}] (${l.role}${l.room ? ' #' + l.room : ''}) ${
+          l.message
+        }${l.details ? ' | ' + l.details : ''}`;
+      });
+      const text =
+        `🐞 *DIAGNÓSTICO DE PRODUÇÃO — TACTICAL COMMAND*\n` +
+        ` Papel: ${cloudMeta.role} | Sala: ${cloudMeta.sessionCode || 'LOCAL'} | WS: ${realtimeConnectionStatus}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        (lines.length > 0 ? lines.slice(0, 45).join('\n') : 'Sem erros registrados.');
+
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('📋', 'Logs copiados para a área de transferência!');
+      });
+    });
+  }
+
+  const btnClearLogs = document.getElementById('btnClearLogs');
+  if (btnClearLogs) {
+    btnClearLogs.addEventListener('click', () => {
+      tacticalLogger.clear();
+      renderLogsModal();
+      showToast('🗑️', 'Histórico de logs limpo!');
+    });
+  }
+
+  // Refresh Open Online Rooms Buttons
+  document.querySelectorAll('[data-refresh-open-rooms]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await fetchOpenOnlineRooms();
+      showToast('🔄', 'Lista de salas online atualizada!');
+    });
+  });
+
+  const btnRefreshAuthMyRooms = document.getElementById('btnRefreshAuthMyRooms');
+  if (btnRefreshAuthMyRooms) {
+    btnRefreshAuthMyRooms.addEventListener('click', async () => {
+      await fetchMyCreatedRooms();
+      showToast('🔄', 'Suas salas foram atualizadas!');
+    });
+  }
+
+  const btnResumeActiveRoom = document.getElementById('btnResumeActiveRoomFromAuth');
+  if (btnResumeActiveRoom) {
+    btnResumeActiveRoom.addEventListener('click', () => {
+      closeAuthModal();
+      showToast('🎯', `De volta à sala #${cloudMeta.sessionCode}!`);
+    });
+  }
+
   // Soldier Combat Level / Rank Selector Buttons (Recruta / Experiente / Matador)
   document.querySelectorAll('[data-rank-select]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -3343,7 +4115,10 @@ function bindEvents() {
     }
   }
 
-  tabQuickJoin.addEventListener('click', () => activateAuthTab('JOIN'));
+  tabQuickJoin.addEventListener('click', () => {
+    activateAuthTab('JOIN');
+    fetchOpenOnlineRooms();
+  });
   tabLogin.addEventListener('click', () => activateAuthTab('LOGIN'));
   tabRegister.addEventListener('click', () => activateAuthTab('REGISTER'));
 
@@ -3365,8 +4140,10 @@ function bindEvents() {
     const name = document.getElementById('inputAuthJoinName').value;
     document.getElementById('inputJoinSessionCode').value = code;
     document.getElementById('inputJoinOperatorName').value = name;
-    closeAuthModal();
-    await joinCloudSession();
+    const joined = await joinCloudSession(code);
+    if (joined) {
+      closeAuthModal();
+    }
   });
 
   const btnGoToLoginFromCloud = document.getElementById('btnGoToLoginFromCloud');
@@ -3408,6 +4185,10 @@ function bindEvents() {
 // Reconnect to active session or URL ?room=CODE parameter on boot
 async function checkInitialCloudSession() {
   initSupabaseClient();
+  fetchOpenOnlineRooms();
+  if (cloudMeta.authUser) {
+    fetchMyCreatedRooms();
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
   const roomFromUrl = sanitizeSessionCode(urlParams.get('room'));
@@ -3429,16 +4210,21 @@ async function checkInitialCloudSession() {
 
   if (cloudMeta.sessionCode && supabaseClient) {
     try {
-      const { data } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('tactical_sessions')
         .select('*')
         .eq('code', cloudMeta.sessionCode)
         .maybeSingle();
 
+      if (error) {
+        tacticalLogger.error('CLOUD', `Erro ao reconectar na sala #${cloudMeta.sessionCode}`, error.message);
+      }
+
       if (data && data.state) {
         const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
         const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
         const isCreator =
+          Boolean(cloudMeta.authUser?.isAdmin && (!rowOwnerEmail || rowOwnerEmail === currentEmail)) ||
           (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
           data.host_id === cloudMeta.deviceId;
 
@@ -3450,10 +4236,26 @@ async function checkInitialCloudSession() {
 
         cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
         saveCloudMeta();
-        applyRemoteCloudState(data.state);
+
+        // Protect local Host stats/settings if local has newer matches than remote
+        const localMatches = state.stats?.totalMatches || 0;
+        const remoteMatches = data.state?.stats?.totalMatches || 0;
+        if (isCreator && localMatches > remoteMatches) {
+          tacticalLogger.warn(
+            'CLOUD',
+            `Preservando relatório local do Juiz (${localMatches} partidas vs ${remoteMatches} na nuvem)`
+          );
+          saveState(false);
+        } else {
+          applyRemoteCloudState(data.state, { forceFullSync: true });
+        }
+
         subscribeToCloudSession(cloudMeta.sessionCode);
+        renderAll();
       }
-    } catch (e) {}
+    } catch (e) {
+      tacticalLogger.error('CLOUD', 'Exceção em checkInitialCloudSession', e?.message || String(e));
+    }
   }
 }
 

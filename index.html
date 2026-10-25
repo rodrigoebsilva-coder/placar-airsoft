@@ -113,30 +113,37 @@
           </button>
         </div>
 
-        <!-- Secondary 4-Column Mobile Grid (Voice, Sound, Help, Reset) -->
-        <div class="grid grid-cols-4 sm:flex items-center gap-2 w-full sm:w-auto">
+        <!-- Secondary 5-Column Mobile Grid (Voice, Sound, Help, Logs, Reset) -->
+        <div class="grid grid-cols-5 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           <!-- Test Voice Announcer Button -->
-          <button id="btnTestVoice" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Testar Locutor e Sirene">
+          <button id="btnTestVoice" type="button" class="w-full sm:w-auto px-1.5 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-zinc-200 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Testar Locutor e Sirene">
             <span>🎙️</span>
-            <span class="text-[11px] sm:text-xs">VOZ</span>
+            <span class="text-[10px] sm:text-xs">VOZ</span>
           </button>
 
           <!-- Audio Mute / Unmute Toggle -->
-          <button id="btnToggleMute" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Ativar/Desativar Som">
+          <button id="btnToggleMute" type="button" class="w-full sm:w-auto px-1.5 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-zinc-700 text-lime-400 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Ativar/Desativar Som">
             <span id="muteIcon">🔊</span>
-            <span id="muteLabel" class="text-[11px] sm:text-xs">SOM</span>
+            <span id="muteLabel" class="text-[10px] sm:text-xs">SOM</span>
           </button>
 
           <!-- Help / Tactical Manual Button -->
-          <button id="btnOpenHelp" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-lime-400/60 text-lime-400 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition shadow-[0_0_12px_rgba(163,230,53,0.18)]" title="Manual de Uso e Instruções de Campo">
+          <button id="btnOpenHelp" type="button" class="w-full sm:w-auto px-1.5 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-lime-400/60 text-lime-400 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition shadow-[0_0_12px_rgba(163,230,53,0.18)]" title="Manual de Uso e Instruções de Campo">
             <span>❓</span>
-            <span class="text-[11px] sm:text-xs">AJUDA</span>
+            <span class="text-[10px] sm:text-xs">AJUDA</span>
+          </button>
+
+          <!-- System & Error Logs Modal Button -->
+          <button id="btnOpenLogs" type="button" class="w-full sm:w-auto px-1.5 sm:px-3 h-[46px] rounded-xl bg-zinc-950 hover:bg-zinc-800 active:scale-95 border border-sky-500/50 text-sky-300 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Logs de Erros e Diagnóstico de Sincronização">
+            <span>🐞</span>
+            <span class="text-[10px] sm:text-xs">LOGS</span>
+            <span id="headerErrorCountBadge" class="hidden px-1 py-0.5 text-[9px] font-tactical-mono rounded bg-red-600 text-white font-black">0</span>
           </button>
 
           <!-- Reset Session Button -->
-          <button id="btnResetSession" type="button" class="w-full sm:w-auto px-2 sm:px-3 h-[46px] rounded-xl bg-red-950/50 hover:bg-red-900/60 active:scale-95 border border-red-800/70 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Zerar Sessão / Novo Jogo">
+          <button id="btnResetSession" type="button" class="w-full sm:w-auto px-1.5 sm:px-3 h-[46px] rounded-xl bg-red-950/50 hover:bg-red-900/60 active:scale-95 border border-red-800/70 text-red-300 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-1 whitespace-nowrap transition" title="Zerar Sessão / Novo Jogo">
             <span>🗑️</span>
-            <span class="text-[11px] sm:text-xs">ZERAR</span>
+            <span class="text-[10px] sm:text-xs">ZERAR</span>
           </button>
         </div>
       </div>
@@ -723,14 +730,25 @@
               </h3>
 
               <div>
-                <label for="inputJoinSessionCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                  1. CÓDIGO DA SALA
-                </label>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="inputJoinSessionCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    1. CÓDIGO DA SALA ABERTA
+                  </label>
+                  <button
+                    type="button"
+                    data-refresh-open-rooms
+                    class="text-[10px] font-tactical-mono font-bold text-sky-400 hover:underline uppercase"
+                  >
+                    🔄 Buscar Salas Online
+                  </button>
+                </div>
+                <!-- Quick-Select Open Online Rooms Chips -->
+                <div id="openRoomsChipsCloudModal" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
                 <input
                   id="inputJoinSessionCode"
                   type="text"
                   maxlength="16"
-                  placeholder="Digite o código da partida..."
+                  placeholder="Toque numa sala acima ou digite o código..."
                   class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-sky-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
                 />
               </div>
@@ -1486,6 +1504,25 @@
       <!-- Body -->
       <div class="p-5 space-y-5">
 
+        <!-- ACTIVE ROOM QUICK RESUME BANNER (Shown when already connected to a room) -->
+        <div id="authActiveRoomQuickBanner" class="hidden bg-lime-500/15 border-2 border-lime-400 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <div class="text-center sm:text-left">
+            <span class="text-[10px] font-tactical-mono font-black uppercase px-2 py-0.5 rounded bg-lime-400 text-zinc-950">
+              🟢 SESSÃO EM ANDAMENTO
+            </span>
+            <p class="text-xs sm:text-sm font-black uppercase text-white mt-1">
+              SALA ATIVA: <span id="authActiveRoomCodeText" class="text-lime-400 font-tactical-mono">#---</span>
+            </p>
+          </div>
+          <button
+            id="btnResumeActiveRoomFromAuth"
+            type="button"
+            class="w-full sm:w-auto btn-tactical min-h-[46px] px-4 bg-lime-400 hover:bg-lime-300 text-zinc-950 text-xs font-black whitespace-nowrap"
+          >
+            🎯 VOLTAR PARA A SALA AGORA
+          </button>
+        </div>
+
         <!-- LOGGED IN VIEW -->
         <div id="authLoggedInView" class="hidden space-y-4">
           <div class="bg-zinc-950 border-2 border-zinc-800 rounded-2xl p-4 text-center space-y-2">
@@ -1505,11 +1542,16 @@
             </div>
           </div>
 
-          <div class="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 space-y-1">
-            <p>✅ <strong>Conta Autenticada (Criação de Salas Liberada):</strong></p>
-            <p id="authProfilePermissionsText" class="text-zinc-400">
-              Como usuário logado com e-mail e senha, você pode criar novas salas na nuvem, definir o status Online/Offline das suas salas criadas ou excluí-las.
-            </p>
+          <div class="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-black uppercase text-lime-400">🟢 SUAS SALAS CRIADAS (1 CLIQUE PARA ENTRAR):</span>
+              <button type="button" id="btnRefreshAuthMyRooms" class="text-[10px] font-tactical-mono text-sky-400 hover:underline uppercase font-bold">
+                🔄 Atualizar
+              </button>
+            </div>
+            <div id="authQuickMyRoomsList" class="space-y-1.5 max-h-[160px] overflow-y-auto">
+              <!-- Populated by JS -->
+            </div>
           </div>
 
           <div class="flex flex-col sm:flex-row gap-2">
@@ -1624,15 +1666,26 @@
             </div>
 
             <div>
-              <label for="inputAuthJoinCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                1. CÓDIGO DA SALA EXISTENTE
-              </label>
+              <div class="flex items-center justify-between mb-1">
+                <label for="inputAuthJoinCode" class="block text-xs font-bold uppercase tracking-wider text-zinc-300">
+                  1. CÓDIGO DA SALA EXISTENTE
+                </label>
+                <button
+                  type="button"
+                  data-refresh-open-rooms
+                  class="text-[10px] font-tactical-mono font-bold text-amber-400 hover:underline uppercase"
+                >
+                  🔄 Buscar Salas Abertas
+                </button>
+              </div>
+              <!-- Quick-Select Open Online Rooms Chips -->
+              <div id="openRoomsChipsAuthModal" class="flex flex-wrap gap-1.5 mb-2 empty:hidden"></div>
               <input
                 id="inputAuthJoinCode"
                 type="text"
                 maxlength="16"
                 required
-                placeholder="Ex: ALPHA-42, DOMINGO..."
+                placeholder="Toque numa sala acima ou digite o código..."
                 class="w-full min-h-[50px] bg-zinc-900 border-2 border-zinc-700 focus:border-amber-400 rounded-xl px-3.5 font-tactical-mono text-lg font-black uppercase tracking-widest text-white outline-none"
               />
             </div>
@@ -1787,6 +1840,101 @@
         >
           <span>⚡ Desenvolvido por SOLia Labs</span>
         </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL 5: CENTRAL DE LOGS DE ERROS & DIAGNÓSTICO DE PRODUÇÃO             -->
+  <!-- ======================================================================= -->
+  <div id="modalLogs" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 flex items-start sm:items-center justify-center">
+    <div class="bg-zinc-900 border-2 border-sky-400/80 rounded-2xl w-full max-w-4xl overflow-hidden shadow-[0_0_50px_rgba(56,189,248,0.2)] my-auto">
+      <!-- Header -->
+      <div class="bg-zinc-950 border-b border-zinc-800 px-5 py-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🐞</span>
+          <div>
+            <h2 class="text-base sm:text-xl font-black uppercase tracking-wider text-white">
+              CENTRAL DE LOGS &amp; DIAGNÓSTICO DE PRODUÇÃO
+            </h2>
+            <p class="text-xs text-zinc-400">
+              Monitoramento de erros, sincronização em tempo real, conflitos bloqueados e status do Supabase
+            </p>
+          </div>
+        </div>
+        <button id="btnCloseLogs" type="button" class="min-h-[46px] min-w-[46px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-black text-lg flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-4 sm:p-6 space-y-4 max-h-[78dvh] overflow-y-auto">
+        <!-- Live System Telemetry Summary -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+            <span class="block text-[10px] font-tactical-mono uppercase text-zinc-400">PAPEL ATUAL</span>
+            <span id="diagRoleText" class="text-sm font-tactical-mono font-black text-lime-400">LOCAL</span>
+          </div>
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+            <span class="block text-[10px] font-tactical-mono uppercase text-zinc-400">SALA ATIVA</span>
+            <span id="diagRoomText" class="text-sm font-tactical-mono font-black text-sky-400">NENHUMA</span>
+          </div>
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+            <span class="block text-[10px] font-tactical-mono uppercase text-zinc-400">REALTIME WS</span>
+            <span id="diagRealtimeStatusText" class="text-sm font-tactical-mono font-black text-zinc-300">STANDBY</span>
+          </div>
+          <div class="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+            <span class="block text-[10px] font-tactical-mono uppercase text-zinc-400">ERROS REGISTRADOS</span>
+            <span id="diagErrorsCountText" class="text-sm font-tactical-mono font-black text-red-400">0</span>
+          </div>
+        </div>
+
+        <!-- Filter & Action Toolbar -->
+        <div class="flex flex-wrap items-center justify-between gap-2 bg-zinc-950 p-2.5 rounded-xl border border-zinc-800">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button type="button" data-log-filter="ALL" class="px-3 py-1.5 rounded-lg bg-sky-400 text-zinc-950 font-black text-xs uppercase">
+              TODOS
+            </button>
+            <button type="button" data-log-filter="ERROR" class="px-3 py-1.5 rounded-lg bg-zinc-900 text-red-400 border border-red-800/60 font-black text-xs uppercase">
+              🚨 ERROS / FALHAS
+            </button>
+            <button type="button" data-log-filter="CLOUD" class="px-3 py-1.5 rounded-lg bg-zinc-900 text-sky-300 border border-sky-800/60 font-black text-xs uppercase">
+              ☁️ NUVEM / SALAS
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button id="btnRunCloudDiag" type="button" class="px-3 py-1.5 rounded-lg bg-lime-400/20 hover:bg-lime-400/30 border border-lime-400 text-lime-300 font-black text-xs uppercase">
+              🩺 TESTAR CONEXÃO SUPABASE
+            </button>
+            <button id="btnCopyLogs" type="button" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-white font-black text-xs uppercase">
+              📋 COPIAR LOGS
+            </button>
+            <button id="btnClearLogs" type="button" class="px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-300 font-black text-xs uppercase">
+              🗑️ LIMPAR
+            </button>
+          </div>
+        </div>
+
+        <!-- Logs Feed -->
+        <div id="logsContainerList" class="bg-zinc-950 border border-zinc-800 rounded-xl p-3 space-y-2 max-h-[380px] overflow-y-auto font-tactical-mono text-xs">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="bg-zinc-950 border-t border-zinc-800 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <a
+          href="https://www.instagram.com/soliaoficial?xtok=MWMwZTM0NWU1a3I0Mg=="
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-xs font-extrabold text-lime-400 hover:text-lime-300 hover:underline tracking-wide transition order-2 sm:order-1"
+        >
+          ⚡ Desenvolvido por SOLia Labs
+        </a>
+        <button id="btnDoneLogs" type="button" class="w-full sm:w-auto btn-tactical min-h-[48px] px-8 bg-sky-400 hover:bg-sky-300 text-zinc-950 text-xs sm:text-sm font-black order-1 sm:order-2">
+          FECHAR DIAGNÓSTICO
+        </button>
       </div>
     </div>
   </div>
