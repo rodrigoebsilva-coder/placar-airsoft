@@ -13,7 +13,7 @@
    (mensagem SKIP_WAITING) — nunca no meio de uma partida.
    ============================================================================= */
 
-const VERSION = '2.7.0';
+const VERSION = '2.8.0';
 const CACHE_NAME = `tactical-cmd-v${VERSION}`;
 
 const CORE_ASSETS = [
