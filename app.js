@@ -10,9 +10,8 @@ const LOCAL_USERS_KEY = 'tactical_command_users_v2';
 const LOGS_STORAGE_KEY = 'tactical_command_logs_v2';
 const MAX_LOGS_COUNT = 150;
 
-// Master Admin Credentials configured as requested
+// Master Admin Account Identity (passwords are managed via Supabase Auth, never stored in source code)
 const ADMIN_EMAIL = 'rodrigoebsilva@gmail.com';
-const ADMIN_PASS = 'Ebgdae87@@tac';
 const ADMIN_DEFAULT_NAME = 'RODRIGO (COMANDANTE ADM)';
 
 // Optional default Supabase credentials (can also be configured in the UI modal)
@@ -644,7 +643,251 @@ class TacticalAudioEngine {
   }
 }
 
+const TacticalAudioEnginePatch = {
+  async preloadFpsVoiceClips() {
+    const files = { KILL_THEM_ALL: './sfx-kill-them-all.mp3', GAME_OVER: './sfx-game-over.mp3' };
+    this._decoding = this._decoding || {};
+    for (const [key, url] of Object.entries(files)) {
+      if (this.rawClipData[key] || this.decodedBuffers[key]) continue;
+      try {
+        const res = await fetch(url);
+        if (res.ok) this.rawClipData[key] = await res.arrayBuffer();
+      } catch (e) {
+        /* offline no 1º load: tenta de novo no próximo gesto (warmUp) */
+      }
+    }
+  },
+
+  decodeClip(key) {
+    if (this.decodedBuffers[key]) return Promise.resolve(this.decodedBuffers[key]);
+    if (!this.ctx || !this.rawClipData[key]) return Promise.resolve(null);
+    this._decoding = this._decoding || {};
+    if (!this._decoding[key]) {
+      const copy = this.rawClipData[key].slice(0);
+      this._decoding[key] = this.ctx
+        .decodeAudioData(copy)
+        .then((buf) => {
+          this.decodedBuffers[key] = buf;
+          this.rawClipData[key] = null;
+          return buf;
+        })
+        .catch(() => null)
+        .finally(() => {
+          delete this._decoding[key];
+        });
+    }
+    return this._decoding[key];
+  },
+
+  async warmUp() {
+    if (!this.ctx) return;
+    await this.preloadFpsVoiceClips();
+    await Promise.all(['KILL_THEM_ALL', 'GAME_OVER'].map((k) => this.decodeClip(k)));
+  },
+
+  ensureContext() {
+    if (state.settings.muted) return null;
+    if (this.ctx && this.ctx.state === 'closed') this.ctx = null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      try {
+        this.ctx = new AudioCtx({ latencyHint: 'interactive' });
+      } catch (e) {
+        this.ctx = new AudioCtx();
+      }
+      this.ctx.onstatechange = () => {
+        if (this.ctx && this.ctx.state === 'running') this.warmUp();
+      };
+    }
+    if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') {
+      this.ctx.resume().catch(() => {});
+    }
+    return this.ctx;
+  },
+
+  unlockFromGesture() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    if (!this._silentPlayed) {
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+        src.onended = () => src.disconnect();
+        this._silentPlayed = true;
+      } catch (e) {}
+    }
+    if (ctx.state === 'running') this.warmUp();
+  },
+
+  installUnlockListeners() {
+    if (this._unlockInstalled) return;
+    this._unlockInstalled = true;
+    const handler = () => this.unlockFromGesture();
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
+      document.addEventListener(ev, handler, { capture: true, passive: true });
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.ctx && this.ctx.state !== 'running') {
+        this.ctx.resume().catch(() => {});
+      }
+    });
+  },
+
+  playTone(freq = 880, durationMs = 120, type = 'sine', gainVal = 0.25, delayMs = 0) {
+    if (state.settings.muted) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    const startTime = ctx.currentTime + delayMs / 1000;
+    const endTime = startTime + durationMs / 1000;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, startTime);
+    gain.gain.setValueAtTime(0.0001, startTime);
+    gain.gain.linearRampToValueAtTime(gainVal, startTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch (e) {}
+    };
+    osc.start(startTime);
+    osc.stop(endTime + 0.02);
+  },
+
+  async playFpsAnnouncerClip(clipKey, fallbackPhrase) {
+    if (state.settings.muted) return;
+    const ctx = this.ensureContext();
+
+    if (ctx) {
+      try {
+        const audioBuffer = this.decodedBuffers[clipKey] || (await this.decodeClip(clipKey));
+        if (audioBuffer) {
+          const now = ctx.currentTime;
+          const nodes = [];
+          const track = (n) => (nodes.push(n), n);
+
+          const mainSource = track(ctx.createBufferSource());
+          mainSource.buffer = audioBuffer;
+          mainSource.playbackRate.setValueAtTime(0.87, now);
+
+          const subSource = track(ctx.createBufferSource());
+          subSource.buffer = audioBuffer;
+          subSource.playbackRate.setValueAtTime(0.7, now);
+
+          const subFilter = track(ctx.createBiquadFilter());
+          subFilter.type = 'lowpass';
+          subFilter.frequency.setValueAtTime(360, now);
+          const subLayerGain = track(ctx.createGain());
+          subLayerGain.gain.setValueAtTime(0.42, now);
+          subSource.connect(subFilter);
+          subFilter.connect(subLayerGain);
+
+          const bassBoost = track(ctx.createBiquadFilter());
+          bassBoost.type = 'lowshelf';
+          bassBoost.frequency.setValueAtTime(140, now);
+          bassBoost.gain.setValueAtTime(9.5, now);
+
+          const presenceBoost = track(ctx.createBiquadFilter());
+          presenceBoost.type = 'peaking';
+          presenceBoost.frequency.setValueAtTime(2400, now);
+          presenceBoost.Q.setValueAtTime(1.1, now);
+          presenceBoost.gain.setValueAtTime(4.5, now);
+
+          const shaper = track(ctx.createWaveShaper());
+          if (!this._distCurve) this._distCurve = this.makeDistortionCurve(22);
+          shaper.curve = this._distCurve;
+          shaper.oversample = '2x';
+
+          const delay = track(ctx.createDelay());
+          delay.delayTime.setValueAtTime(0.11, now);
+          const feedback = track(ctx.createGain());
+          feedback.gain.setValueAtTime(0.24, now);
+          const wetGain = track(ctx.createGain());
+          wetGain.gain.setValueAtTime(0.26, now);
+          delay.connect(feedback);
+          feedback.connect(delay);
+          delay.connect(wetGain);
+
+          const compressor = track(ctx.createDynamicsCompressor());
+          compressor.threshold.setValueAtTime(-20, now);
+          compressor.knee.setValueAtTime(12, now);
+          compressor.ratio.setValueAtTime(8, now);
+          compressor.attack.setValueAtTime(0.003, now);
+          compressor.release.setValueAtTime(0.18, now);
+
+          const masterGain = track(ctx.createGain());
+          masterGain.gain.setValueAtTime(1.65, now);
+
+          mainSource.connect(bassBoost);
+          subLayerGain.connect(bassBoost);
+          bassBoost.connect(presenceBoost);
+          presenceBoost.connect(shaper);
+          shaper.connect(compressor);
+          shaper.connect(delay);
+          wetGain.connect(compressor);
+          compressor.connect(masterGain);
+          masterGain.connect(ctx.destination);
+
+          let cleaned = false;
+          const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
+            setTimeout(() => {
+              for (const n of nodes) {
+                try {
+                  n.disconnect();
+                } catch (e) {}
+              }
+            }, 1500);
+          };
+          subSource.onended = cleanup;
+
+          mainSource.start(now);
+          subSource.start(now + 0.008);
+          return;
+        }
+      } catch (err) {
+        console.warn('WebAudio FPS clip fallback:', err);
+      }
+    }
+
+    const url = clipKey === 'KILL_THEM_ALL' ? './sfx-kill-them-all.mp3' : './sfx-game-over.mp3';
+    try {
+      const audio = new Audio(url);
+      audio.preservesPitch = false;
+      audio.mozPreservesPitch = false;
+      audio.webkitPreservesPitch = false;
+      audio.playbackRate = 0.85;
+      audio.volume = 1.0;
+      audio.addEventListener(
+        'ended',
+        () => {
+          audio.removeAttribute('src');
+          audio.load();
+        },
+        { once: true }
+      );
+      await audio.play();
+      return;
+    } catch (e) {
+      this.speakCommand(fallbackPhrase);
+    }
+  }
+};
+
+Object.assign(TacticalAudioEngine.prototype, TacticalAudioEnginePatch);
+
 const audioEngine = new TacticalAudioEngine();
+audioEngine.installUnlockListeners();
 
 /* ==========================================================================
    SCREEN WAKE LOCK API
@@ -748,6 +991,22 @@ function isRoomCreator(roomRow) {
   return roomRow.host_id === cloudMeta.deviceId;
 }
 
+async function hashPassword(email, password) {
+  const msg = `tactical_v2:${String(email || '').trim().toLowerCase()}:${String(password || '')}`;
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  let h = 2166136261;
+  for (let i = 0; i < msg.length; i++) {
+    h ^= msg.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return 'fnv_' + (h >>> 0).toString(16);
+}
+
 async function handleLogin(emailRaw, password) {
   const email = (emailRaw || '').trim().toLowerCase();
   if (!email || !password) {
@@ -755,68 +1014,55 @@ async function handleLogin(emailRaw, password) {
     return;
   }
 
-  // 1. Check Pre-configured Master Admin Account
-  if (email === ADMIN_EMAIL.toLowerCase()) {
-    if (password !== ADMIN_PASS) {
-      showToast('❌', 'Senha de Administrador incorreta!');
-      return;
-    }
-
-    cloudMeta.authUser = {
-      id: 'adm_master_rodrigo',
-      email: ADMIN_EMAIL.toLowerCase(),
-      name: ADMIN_DEFAULT_NAME,
-      isAdmin: true
-    };
-    saveCloudMeta();
-
-    // Sync with Supabase Auth in background if available
-    if (initSupabaseClient()) {
-      try {
-        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (error) {
-          await supabaseClient.auth.signUp({
-            email,
-            password,
-            options: { data: { name: ADMIN_DEFAULT_NAME, role: 'admin' } }
-          });
-        }
-      } catch (e) {}
-    }
-
-    await fetchMyCreatedRooms();
-    renderAll();
-    renderAuthModal();
-    showToast('👑', 'Bem-vindo, Comandante Rodrigo (Administrador Master)!');
-    return;
-  }
-
-  // 2. Standard User Login (Supabase Auth + Local Fallback)
+  // 1. Primary Authentication via Supabase Auth
   if (initSupabaseClient()) {
     try {
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
       if (!error && data?.user) {
+        const isAdmin = email === ADMIN_EMAIL.toLowerCase();
         const metaName =
-          data.user.user_metadata?.name || email.split('@')[0].toUpperCase();
+          data.user.user_metadata?.name ||
+          (isAdmin ? ADMIN_DEFAULT_NAME : email.split('@')[0].toUpperCase());
         cloudMeta.authUser = {
           id: data.user.id,
           email,
           name: metaName,
-          isAdmin: email === ADMIN_EMAIL.toLowerCase()
+          isAdmin
         };
         saveCloudMeta();
         await fetchMyCreatedRooms();
         renderAll();
         renderAuthModal();
-        showToast('🔓', `Login realizado! Bem-vindo, ${metaName}.`);
+        showToast(isAdmin ? '👑' : '🔓', `Bem-vindo, ${metaName}!`);
         return;
       }
     } catch (e) {}
   }
 
-  // Check local self-registered users store
+  // 2. Local Fallback Store (SHA-256 hashed, migrating any legacy plaintext entries)
   const users = getLocalUsers();
-  const found = users.find((u) => u.email.toLowerCase() === email && u.password === password);
+  const passHash = await hashPassword(email, password);
+  let migrated = false;
+  let found = null;
+
+  for (const u of users) {
+    if (u.email.toLowerCase() === email) {
+      if (u.passwordHash && u.passwordHash === passHash) {
+        found = u;
+      } else if (u.password && u.password === password) {
+        u.passwordHash = passHash;
+        delete u.password;
+        migrated = true;
+        found = u;
+      }
+    } else if (u.password) {
+      u.passwordHash = await hashPassword(u.email, u.password);
+      delete u.password;
+      migrated = true;
+    }
+  }
+  if (migrated) saveLocalUsers(users);
+
   if (!found) {
     showToast('❌', 'E-mail ou senha inválidos! Caso não tenha conta, use a aba AUTO-CADASTRO.');
     return;
@@ -836,7 +1082,7 @@ async function handleLogin(emailRaw, password) {
 }
 
 async function handleSelfRegister(nameRaw, emailRaw, password) {
-  const name = (nameRaw || '').trim().toUpperCase();
+  const name = (nameRaw || '').trim().toUpperCase().slice(0, 40);
   const email = (emailRaw || '').trim().toLowerCase();
 
   if (!name || !email || !password) {
@@ -849,11 +1095,6 @@ async function handleSelfRegister(nameRaw, emailRaw, password) {
     return;
   }
 
-  if (email === ADMIN_EMAIL.toLowerCase() && password !== ADMIN_PASS) {
-    showToast('🔒', 'Este e-mail pertence ao Administrador Master. Use a aba Login com a senha ADM.');
-    return;
-  }
-
   const users = getLocalUsers();
   if (users.some((u) => u.email.toLowerCase() === email)) {
     showToast('⚠️', 'Este e-mail já está cadastrado! Use a aba ENTRAR (LOGIN).');
@@ -861,11 +1102,12 @@ async function handleSelfRegister(nameRaw, emailRaw, password) {
   }
 
   const isAdmin = email === ADMIN_EMAIL.toLowerCase();
+  const passwordHash = await hashPassword(email, password);
   const newUser = {
     id: 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
     name,
     email,
-    password,
+    passwordHash,
     isAdmin
   };
 
@@ -957,8 +1199,13 @@ function initSupabaseClient() {
 function generateRandomSessionCode() {
   const prefixes = ['ALPHA', 'BRAVO', 'DELTA', 'GHOST', 'VIPER', 'COBRA', 'SNIPER', 'TACTIC'];
   const p = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const num = Math.floor(10 + Math.random() * 90);
-  return `${p}-${num}`;
+  const a = new Uint32Array(1);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(a);
+  } else {
+    a[0] = Math.floor(Math.random() * 100000);
+  }
+  return `${p}-${String((a[0] % 9000) + 1000)}`;
 }
 
 function sanitizeSessionCode(raw) {
@@ -1013,108 +1260,475 @@ function buildCloudStatePayload(isOnlineOverride = null, existingRoomMeta = null
   };
 }
 
-let pushDebounceTimer = null;
-async function pushStateToCloud() {
+const OUTBOX_KEY = 'tactical_command_outbox_v1';
+const BUSINESS_ERRORS = [
+  'forbidden',
+  'room_not_found',
+  'soldier_not_found',
+  'invalid_soldier',
+  'room_full',
+  'room_offline',
+  'invalid_role',
+  'auth_required',
+  'code_taken',
+  'invalid_code'
+];
+
+let connectionState = 'IDLE'; // IDLE | ONLINE | RECONNECTING | OFFLINE
+let lastSeenRev = 0;
+let lastSentRosterSig = null;
+let flushTimer = null;
+let flushing = false;
+let flushAgain = false;
+let flushAttempt = 0;
+let heartbeatTimer = null;
+let resyncInFlight = null;
+let resyncRetryTimer = null;
+let lastFullSyncAt = 0;
+
+async function rpc(fn, args) {
+  const { data, error } = await supabaseClient.rpc(fn, args);
+  if (error) {
+    const e = new Error(error.message || String(error));
+    e.code = error.code;
+    throw e;
+  }
+  return data;
+}
+
+function isBusinessError(e) {
+  const msg = String((e && e.message) || '');
+  return BUSINESS_ERRORS.some((k) => msg.includes(k));
+}
+
+function newBox() {
+  return {
+    alive: {},
+    enlist: null,
+    hostDirty: false,
+    rosterDirty: false,
+    removed: [],
+    resetAlive: false,
+    force: false
+  };
+}
+function readOutbox() {
+  try {
+    return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+function writeOutbox(ob) {
+  try {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(ob));
+  } catch (e) {}
+}
+function mutateOutbox(fn, delayMs = 0) {
+  const code = cloudMeta.sessionCode;
+  if (!code) return;
+  const ob = readOutbox();
+  const box = ob[code] || (ob[code] = newBox());
+  fn(box);
+  writeOutbox(ob);
+  scheduleFlush(delayMs);
+}
+function drainOutbox(code) {
+  const ob = readOutbox();
+  const box = ob[code];
+  if (!box) return null;
+  delete ob[code];
+  writeOutbox(ob);
+  return box;
+}
+function restoreOutbox(code, drained) {
+  const ob = readOutbox();
+  const cur = ob[code] || newBox();
+  cur.alive = { ...drained.alive, ...cur.alive };
+  cur.enlist = cur.enlist || drained.enlist;
+  cur.hostDirty = cur.hostDirty || drained.hostDirty;
+  cur.rosterDirty = cur.rosterDirty || drained.rosterDirty;
+  cur.resetAlive = cur.resetAlive || drained.resetAlive;
+  cur.force = cur.force || drained.force;
+  cur.removed = [...new Set([...(drained.removed || []), ...cur.removed])];
+  ob[code] = cur;
+  writeOutbox(ob);
+}
+function outboxBox() {
+  return readOutbox()[cloudMeta.sessionCode] || null;
+}
+
+function queueSoldierAlive(soldier) {
+  mutateOutbox((b) => {
+    b.alive[soldier.id] = Boolean(soldier.alive);
+  }, 0);
+}
+function queueEnlist(soldier) {
+  mutateOutbox((b) => {
+    b.enlist = { id: soldier.id, name: soldier.name, team: soldier.team, rank: soldier.rank };
+  }, 0);
+}
+function queueHostSync({ roster = false, removedIds = [], resetAlive = false, force = false } = {}) {
+  mutateOutbox((b) => {
+    b.hostDirty = true;
+    if (roster) b.rosterDirty = true;
+    if (resetAlive) b.resetAlive = true;
+    if (force) b.force = true;
+    if (removedIds.length) b.removed = [...new Set([...b.removed, ...removedIds])];
+  }, 90);
+}
+
+function pushStateToCloud() {
   if (!supabaseClient || !cloudMeta.sessionCode) return;
+  if (cloudMeta.role !== 'HOST') return;
+  queueHostSync({ roster: true });
+}
 
-  if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
-  pushDebounceTimer = setTimeout(async () => {
+function scheduleFlush(ms) {
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushOutbox, ms);
+}
+
+function rosterSignature() {
+  return JSON.stringify(
+    state.soldiers.map((s) => [
+      s.id,
+      s.name,
+      s.team,
+      s.rank,
+      (s.stats && s.stats.survived) | 0,
+      (s.stats && s.stats.kia) | 0,
+      (s.stats && s.stats.matches) | 0
+    ])
+  );
+}
+
+function buildHostPatch() {
+  const t = (k) => ({
+    name: state.teams[k].name,
+    color: state.teams[k].color,
+    wins: state.teams[k].wins,
+    aliveCount: state.teams[k].aliveCount
+  });
+  return {
+    teams: { A: t('A'), B: t('B') },
+    settings: {
+      mode: state.settings.mode,
+      timeLimitMinutes: state.settings.timeLimitMinutes,
+      prepSeconds: state.settings.prepSeconds
+    },
+    stats: state.stats,
+    liveTimer: state.liveTimer
+  };
+}
+
+async function flushOutbox() {
+  flushTimer = null;
+  if (!supabaseClient || !cloudMeta.sessionCode) return true;
+  if (flushing) {
+    flushAgain = true;
+    return false;
+  }
+  const code = cloudMeta.sessionCode;
+  const role = cloudMeta.role === 'HOST' ? 'HOST' : 'PLAYER';
+  const box = drainOutbox(code);
+  if (!box) return true;
+
+  flushing = true;
+  let ok = true;
+  try {
+    if (box.enlist) {
+      const st = await rpc('rpc_enlist_soldier', {
+        p_code: code,
+        p_soldier: box.enlist,
+        p_device_id: cloudMeta.deviceId
+      });
+      adoptServerSoldier(st, box.enlist.id);
+      box.enlist = null;
+    }
+
+    for (const [id, alive] of Object.entries(box.alive)) {
+      try {
+        await rpc('rpc_set_soldier_alive', {
+          p_code: code,
+          p_soldier_id: id,
+          p_alive: alive,
+          p_device_id: cloudMeta.deviceId,
+          p_role: role
+        });
+      } catch (e) {
+        if (!String(e.message).includes('soldier_not_found')) throw e;
+        const mine = state.soldiers.find((s) => s.id === id);
+        if (!mine) {
+          delete box.alive[id];
+          continue;
+        }
+        await rpc('rpc_enlist_soldier', {
+          p_code: code,
+          p_soldier: { id: mine.id, name: mine.name, team: mine.team, rank: mine.rank },
+          p_device_id: cloudMeta.deviceId
+        });
+        await rpc('rpc_set_soldier_alive', {
+          p_code: code,
+          p_soldier_id: id,
+          p_alive: alive,
+          p_device_id: cloudMeta.deviceId,
+          p_role: role
+        });
+      }
+      delete box.alive[id];
+    }
+
+    if (box.hostDirty && role === 'HOST') {
+      await rpc('rpc_host_patch', {
+        p_code: code,
+        p_patch: buildHostPatch(),
+        p_device_id: cloudMeta.deviceId,
+        p_force: Boolean(box.force)
+      });
+      const sig = rosterSignature();
+      if (box.rosterDirty && (sig !== lastSentRosterSig || box.resetAlive || box.removed.length)) {
+        await rpc('rpc_host_sync_roster', {
+          p_code: code,
+          p_soldiers: state.soldiers,
+          p_removed_ids: box.removed,
+          p_reset_alive: Boolean(box.resetAlive),
+          p_device_id: cloudMeta.deviceId
+        });
+        lastSentRosterSig = sig;
+      }
+      box.hostDirty = false;
+      box.rosterDirty = false;
+      box.resetAlive = false;
+      box.force = false;
+      box.removed = [];
+    }
+
+    flushAttempt = 0;
+    if (connectionState !== 'ONLINE') setConnectionState('ONLINE');
+  } catch (e) {
+    ok = false;
+    if (isBusinessError(e)) {
+      tacticalLogger.error('CLOUD', `RPC recusada: ${e.message}`);
+      if (String(e.message).includes('room_not_found')) {
+        showToast('🗑️', 'A sala não existe mais.');
+        leaveCloudSession();
+      } else if (String(e.message).includes('forbidden')) {
+        showToast('🔒', 'Ação não permitida nesta sala.');
+      }
+    } else {
+      restoreOutbox(code, box);
+      setConnectionState('OFFLINE');
+      flushAttempt += 1;
+      scheduleFlush(Math.min(30000, 1000 * 2 ** Math.min(flushAttempt, 5)));
+      tacticalLogger.warn('CLOUD', 'Sem conexão: ações mantidas na fila local', e.message);
+    }
+  } finally {
+    flushing = false;
+    if (flushAgain) {
+      flushAgain = false;
+      scheduleFlush(0);
+    }
+  }
+  return ok;
+}
+
+function adoptServerSoldier(serverState, soldierId) {
+  const srv =
+    serverState && Array.isArray(serverState.soldiers)
+      ? serverState.soldiers.find((s) => s.id === soldierId)
+      : null;
+  const loc = state.soldiers.find((s) => s.id === soldierId);
+  if (srv && loc) {
+    loc.name = srv.name;
+    loc.team = srv.team;
+    loc.rank = srv.rank;
+    saveState(true);
+    renderAll();
+  }
+}
+
+function applyOutboxOverlay() {
+  const box = outboxBox();
+  if (!box) return;
+  for (const [id, alive] of Object.entries(box.alive || {})) {
+    const s = state.soldiers.find((x) => x.id === id);
+    if (s) s.alive = alive;
+  }
+  if (box.removed && box.removed.length) {
+    state.soldiers = state.soldiers.filter((s) => !box.removed.includes(s.id));
+  }
+  if (box.enlist && !state.soldiers.some((s) => s.id === box.enlist.id)) {
+    state.soldiers.push({
+      ...box.enlist,
+      alive: true,
+      stats: { survived: 0, kia: 0, matches: 0 }
+    });
+  }
+  syncAliveCountFromRoster('A');
+  syncAliveCountFromRoster('B');
+}
+
+function setConnectionState(next) {
+  if (connectionState === next) return;
+  connectionState = next;
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById('connBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'connBanner';
+    el.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:90;text-align:center;font:800 12px/1.6 system-ui;' +
+      'text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;background:#f59e0b;color:#09090b;display:none';
+    document.body.appendChild(el);
+  }
+  if (next === 'ONLINE' || next === 'IDLE') {
+    el.style.display = 'none';
+  } else {
+    el.textContent =
+      next === 'OFFLINE'
+        ? '📡 Sem conexão — suas ações serão enviadas quando voltar'
+        : '🔄 Reconectando à sala…';
+    el.style.display = 'block';
+  }
+}
+
+function computeIsCreator(row) {
+  const rowOwnerEmail = row.state?.roomMeta?.ownerEmail?.toLowerCase();
+  const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
+  return (
+    Boolean(cloudMeta.authUser?.isAdmin && (!rowOwnerEmail || rowOwnerEmail === currentEmail)) ||
+    Boolean(currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
+    row.host_id === cloudMeta.deviceId
+  );
+}
+
+function resyncFromServer(reason) {
+  if (resyncInFlight) return resyncInFlight;
+  resyncInFlight = resyncOnce(reason, false).finally(() => {
+    resyncInFlight = null;
+  });
+  return resyncInFlight;
+}
+
+async function resyncOnce(reason, retried) {
+  const code = cloudMeta.sessionCode;
+  if (!supabaseClient || !code) return false;
+  try {
+    await flushOutbox();
+    const { data, error } = await supabaseClient
+      .from('tactical_sessions')
+      .select('code, host_id, state, rev')
+      .eq('code', code)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (cloudMeta.sessionCode !== code) return false;
+
+    if (!data) {
+      tacticalLogger.warn('CLOUD', `Sala ${code} não existe mais (${reason})`);
+      showToast('🗑️', `A sala ${code} foi encerrada.`);
+      leaveCloudSession();
+      return false;
+    }
+
+    const isCreator = computeIsCreator(data);
+
+    if (isCreator && !retried) {
+      const localMatches = (state.stats && state.stats.totalMatches) || 0;
+      const remoteMatches = (data.state && data.state.stats && data.state.stats.totalMatches) || 0;
+      if (localMatches > remoteMatches) {
+        tacticalLogger.warn(
+          'CLOUD',
+          `Preservando relatório local do Juiz (${localMatches} partidas vs ${remoteMatches} na nuvem)`
+        );
+        queueHostSync({ roster: true });
+        await flushOutbox();
+        return await resyncOnce(reason, true);
+      }
+    }
+    if (data.state?.roomMeta?.isOnline === false && !isCreator) {
+      showToast('🔴', `A sala ${code} está OFFLINE.`);
+      leaveCloudSession();
+      return false;
+    }
+
+    cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
+    saveCloudMeta();
+    lastSeenRev = Math.max(lastSeenRev, Number(data.rev) || 0);
+    applyRemoteCloudState(data.state, { forceFullSync: true });
+    lastFullSyncAt = Date.now();
+    if (resyncRetryTimer) {
+      clearTimeout(resyncRetryTimer);
+      resyncRetryTimer = null;
+    }
+    setConnectionState('ONLINE');
+    return true;
+  } catch (e) {
+    setConnectionState('OFFLINE');
+    tacticalLogger.warn('CLOUD', `Resync falhou (${reason}); nova tentativa em breve`, e.message);
+    if (!resyncRetryTimer) {
+      resyncRetryTimer = setTimeout(() => {
+        resyncRetryTimer = null;
+        resyncFromServer('retry');
+      }, 4000);
+    }
+    return false;
+  }
+}
+
+async function ensureConnected(reason) {
+  if (!cloudMeta.sessionCode || !supabaseClient) return;
+  syncServerClock();
+  const ok = await resyncFromServer(reason);
+  const ch = realtimeChannel;
+  if (ok && (!ch || ch.state !== 'joined')) subscribeToCloudSession(cloudMeta.sessionCode);
+}
+
+let connectivityHooksInstalled = false;
+function installConnectivityHooks() {
+  if (connectivityHooksInstalled) return;
+  connectivityHooksInstalled = true;
+  window.addEventListener('online', () => ensureConnected('online'));
+  window.addEventListener('offline', () => setConnectionState('OFFLINE'));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') ensureConnected('visible');
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) ensureConnected('pageshow');
+  });
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(async () => {
+    if (document.visibilityState !== 'visible' || !cloudMeta.sessionCode || !supabaseClient) return;
     try {
-      // PROTECTION: If current user is a PLAYER (Soldier), NEVER overwrite Host's settings, stats, wins, liveTimer, or roomMeta!
-      if (cloudMeta.role === 'PLAYER') {
-        const { data: latestRow, error: fetchErr } = await supabaseClient
-          .from('tactical_sessions')
-          .select('state')
-          .eq('code', cloudMeta.sessionCode)
-          .maybeSingle();
-
-        if (fetchErr || !latestRow || !latestRow.state) {
-          if (fetchErr) {
-            tacticalLogger.error('CLOUD', `Erro ao buscar sala ${cloudMeta.sessionCode} para sync de soldado`, fetchErr.message);
-          }
-          return;
-        }
-
-        const remoteState = latestRow.state;
-        const remoteSoldiers = Array.isArray(remoteState.soldiers) ? [...remoteState.soldiers] : [];
-        const mySoldierLocal = state.soldiers.find((s) => s.id === cloudMeta.mySoldierId);
-
-        if (mySoldierLocal) {
-          const idx = remoteSoldiers.findIndex((s) => s.id === mySoldierLocal.id);
-          if (idx >= 0) {
-            // Preserve authoritative stats from remote while updating soldier's alive/team/rank
-            remoteSoldiers[idx] = {
-              ...remoteSoldiers[idx],
-              name: mySoldierLocal.name,
-              team: mySoldierLocal.team,
-              rank: mySoldierLocal.rank,
-              alive: mySoldierLocal.alive,
-              stats: remoteSoldiers[idx].stats || mySoldierLocal.stats
-            };
-          } else {
-            remoteSoldiers.push(mySoldierLocal);
-          }
-        }
-
-        const aliveA = remoteSoldiers.filter((s) => s.team === 'A' && s.alive).length;
-        const aliveB = remoteSoldiers.filter((s) => s.team === 'B' && s.alive).length;
-        const totalA = remoteSoldiers.filter((s) => s.team === 'A').length;
-        const totalB = remoteSoldiers.filter((s) => s.team === 'B').length;
-
-        const safeMergedState = {
-          ...remoteState,
-          teams: {
-            A: {
-              ...(remoteState.teams?.A || state.teams.A),
-              aliveCount: totalA > 0 ? aliveA : remoteState.teams?.A?.aliveCount ?? 0
-            },
-            B: {
-              ...(remoteState.teams?.B || state.teams.B),
-              aliveCount: totalB > 0 ? aliveB : remoteState.teams?.B?.aliveCount ?? 0
-            }
-          },
-          soldiers: remoteSoldiers,
-          lastMutationBy: cloudMeta.deviceId,
-          lastMutationRole: 'PLAYER',
-          updatedAtMs: Date.now()
-        };
-
-        const { error: updErr } = await supabaseClient
-          .from('tactical_sessions')
-          .update({
-            state: safeMergedState,
-            updated_at: new Date().toISOString()
-          })
-          .eq('code', cloudMeta.sessionCode);
-
-        if (updErr) {
-          tacticalLogger.error('CLOUD', `Falha ao sincronizar soldado na sala ${cloudMeta.sessionCode}`, updErr.message);
-        }
+      const { data, error } = await supabaseClient
+        .from('tactical_sessions')
+        .select('rev')
+        .eq('code', cloudMeta.sessionCode)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) {
+        resyncFromServer('heartbeat');
         return;
       }
-
-      // HOST AUTHORITY PUSH: Full state update preserving roomMeta
-      const payload = buildCloudStatePayload(null, state.roomMeta);
-      state.roomMeta = payload.roomMeta;
-      state.lastMutationBy = payload.lastMutationBy;
-      state.lastMutationRole = payload.lastMutationRole;
-      state.updatedAtMs = payload.updatedAtMs;
-
-      const { error } = await supabaseClient
-        .from('tactical_sessions')
-        .update({
-          state: payload,
-          updated_at: new Date().toISOString()
-        })
-        .eq('code', cloudMeta.sessionCode);
-
-      if (error) {
-        tacticalLogger.error('CLOUD', `Falha do Host ao sincronizar sala ${cloudMeta.sessionCode}`, error.message);
+      if (Number(data.rev) > lastSeenRev) resyncFromServer('heartbeat');
+      else if (connectionState !== 'ONLINE') {
+        setConnectionState('ONLINE');
+        scheduleFlush(0);
       }
-    } catch (err) {
-      tacticalLogger.error('CLOUD', 'Exceção ao sincronizar estado com Supabase', err?.message || String(err));
+    } catch (e) {
+      setConnectionState('OFFLINE');
     }
-  }, 90);
+  }, 20000);
+}
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }
 
 // Fetch open online rooms so Soldiers can join with 1 tap without typing errors
@@ -1281,31 +1895,25 @@ async function toggleMyRoomOnlineStatus(roomCode) {
     const currentOnline = data.state?.roomMeta?.isOnline !== false;
     const nextOnline = !currentOnline;
 
-    const updatedState = {
-      ...(data.state || {}),
-      roomMeta: {
-        ...(data.state?.roomMeta || {}),
-        ownerEmail: rowOwnerEmail || userEmail || null,
-        isOnline: nextOnline
-      }
-    };
-
-    const { error: updErr } = await supabaseClient
-      .from('tactical_sessions')
-      .update({
-        state: updatedState,
-        updated_at: new Date().toISOString()
-      })
-      .eq('code', roomCode);
-
-    if (updErr) {
-      tacticalLogger.error('CLOUD', `Erro ao atualizar status Online/Offline da sala ${roomCode}`, updErr.message);
+    try {
+      await rpc('rpc_host_patch', {
+        p_code: roomCode,
+        p_patch: { roomMeta: { isOnline: nextOnline } },
+        p_device_id: cloudMeta.deviceId,
+        p_force: false
+      });
+    } catch (e) {
+      tacticalLogger.error(
+        'CLOUD',
+        `Erro ao atualizar status Online/Offline da sala ${roomCode}`,
+        e.message
+      );
       showToast('⚠️', 'Erro ao atualizar status da sala.');
       return;
     }
 
     if (cloudMeta.sessionCode === roomCode) {
-      state.roomMeta = updatedState.roomMeta;
+      state.roomMeta = { ...(state.roomMeta || {}), isOnline: nextOnline };
       saveState(true);
     }
 
@@ -1458,7 +2066,7 @@ async function createCloudSession() {
       }
     }
 
-    // Creating a brand-new room: reset only if switching away from an older room
+    // Creating a brand-new room (or updating an empty owned room) without TOCTOU overwrite
     state.roomMeta = {
       ownerEmail: cloudMeta.authUser?.email?.toLowerCase() || null,
       ownerName: cloudMeta.authUser?.name || 'COMANDANTE',
@@ -1467,15 +2075,32 @@ async function createCloudSession() {
     };
     const payload = buildCloudStatePayload(true, state.roomMeta);
 
-    const { error } = await supabaseClient.from('tactical_sessions').upsert(
-      {
+    let error = null;
+    if (existing) {
+      try {
+        await rpc('rpc_host_patch', {
+          p_code: inputCode,
+          p_patch: payload,
+          p_device_id: cloudMeta.deviceId,
+          p_force: false
+        });
+      } catch (e) {
+        error = e;
+      }
+    } else {
+      ({ error } = await supabaseClient.from('tactical_sessions').insert({
         code: inputCode,
         host_id: cloudMeta.deviceId,
-        state: payload,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: 'code' }
-    );
+        state: payload
+      }));
+      if (error && error.code === '23505') {
+        showToast(
+          '⚠️',
+          `O código ${inputCode} acabou de ser usado por outra sala! Clique em 🎲 GERAR.`
+        );
+        return;
+      }
+    }
 
     if (error) {
       tacticalLogger.error('CLOUD', `Erro ao criar sala ${inputCode} no Supabase`, error.message);
@@ -1486,12 +2111,16 @@ async function createCloudSession() {
 
     cloudMeta.sessionCode = inputCode;
     cloudMeta.role = 'HOST';
+    lastSeenRev = 0;
+    lastSentRosterSig = null;
     saveCloudMeta();
+    queueHostSync({ roster: true });
 
     tacticalLogger.info('CLOUD', `Nova sala ${inputCode} criada pelo Host (${cloudMeta.authUser?.email})`);
     await fetchMyCreatedRooms();
     await fetchOpenOnlineRooms();
     subscribeToCloudSession(inputCode);
+    syncServerClock();
     updateUrlRoomParam(inputCode);
     renderAll();
     renderCloudModal();
@@ -1562,12 +2191,7 @@ async function joinCloudSession(customCodeOverride = null) {
       return false;
     }
 
-    const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
-    const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
-    const isCreator =
-      Boolean(cloudMeta.authUser?.isAdmin && (!rowOwnerEmail || rowOwnerEmail === currentEmail)) ||
-      (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
-      data.host_id === cloudMeta.deviceId;
+    const isCreator = computeIsCreator(data);
 
     const isRoomOnline = data.state?.roomMeta?.isOnline !== false;
     if (!isRoomOnline && !isCreator) {
@@ -1578,6 +2202,9 @@ async function joinCloudSession(customCodeOverride = null) {
 
     cloudMeta.sessionCode = code;
     cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
+    lastSeenRev = Number(data.rev) || 0;
+    lastSentRosterSig = null;
+    lastFullSyncAt = Date.now();
 
     // Apply fetched room state with full sync
     applyRemoteCloudState(data.state, { forceFullSync: true });
@@ -1594,40 +2221,37 @@ async function joinCloudSession(customCodeOverride = null) {
     }
 
     // Auto-enlist operator if name was entered (for Players, or if Host explicitly typed a soldier name in Join box)
-    const shouldEnlist =
-      operatorName && (!isCreator || document.getElementById('inputJoinOperatorName').value.trim());
+    const typedName = (document.getElementById('inputJoinOperatorName').value || '').trim();
+    const shouldEnlist = operatorName && (!isCreator || typedName);
 
     if (shouldEnlist) {
-      let existingSoldier = state.soldiers.find(
-        (s) => s.id === cloudMeta.mySoldierId || s.name.toUpperCase() === operatorName
-      );
-
-      if (existingSoldier) {
-        existingSoldier.team = chosenTeam;
-        existingSoldier.rank = cloudMeta.selectedSoldierRank || existingSoldier.rank || 'EXPERIENTE';
-        cloudMeta.mySoldierId = existingSoldier.id;
+      let mine = cloudMeta.mySoldierId && state.soldiers.find((s) => s.id === cloudMeta.mySoldierId);
+      const rank = cloudMeta.selectedSoldierRank || (mine && mine.rank) || 'EXPERIENTE';
+      if (mine) {
+        mine.name = operatorName;
+        mine.team = chosenTeam;
+        mine.rank = rank;
       } else {
-        const newSoldier = {
+        mine = {
           id: 'op_' + cloudMeta.deviceId.slice(-6) + '_' + Date.now().toString(36),
           name: operatorName,
           team: chosenTeam,
-          rank: cloudMeta.selectedSoldierRank || 'EXPERIENTE',
+          rank,
           alive: true,
           stats: { survived: 0, kia: 0, matches: 0 }
         };
-        state.soldiers.push(newSoldier);
-        cloudMeta.mySoldierId = newSoldier.id;
+        state.soldiers.push(mine);
       }
-
+      cloudMeta.mySoldierId = mine.id;
       syncAliveCountFromRoster('A');
       syncAliveCountFromRoster('B');
-      saveState(false);
-    } else if (isCreator) {
-      saveState(false);
+      queueEnlist(mine);
+      saveState(true);
     }
 
     saveCloudMeta();
     subscribeToCloudSession(code);
+    syncServerClock();
     updateUrlRoomParam(code);
     renderAll();
     renderCloudModal();
@@ -1657,24 +2281,18 @@ async function joinCloudSession(customCodeOverride = null) {
 
 function subscribeToCloudSession(code) {
   if (!supabaseClient || !code) return;
-
   if (realtimeChannel) {
     supabaseClient.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
-
   realtimeConnectionStatus = 'CONNECTING...';
+  if (connectionState !== 'OFFLINE') setConnectionState('RECONNECTING');
 
   realtimeChannel = supabaseClient
     .channel(`room_${code}`)
     .on(
       'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'tactical_sessions',
-        filter: `code=eq.${code}`
-      },
+      { event: '*', schema: 'public', table: 'tactical_sessions', filter: `code=eq.${code}` },
       (payload) => {
         if (payload.eventType === 'DELETE') {
           tacticalLogger.warn('CLOUD', `A sala ${code} foi excluída remotamente`);
@@ -1682,121 +2300,137 @@ function subscribeToCloudSession(code) {
           leaveCloudSession();
           return;
         }
-        if (payload.new && payload.new.state) {
-          const isOnline = payload.new.state?.roomMeta?.isOnline !== false;
-          if (!isOnline && cloudMeta.role !== 'HOST') {
-            tacticalLogger.info('CLOUD', `Sala ${code} colocada em modo OFFLINE pelo criador`);
-            showToast('🔴', `O criador colocou a sala ${code} em modo OFFLINE.`);
-            leaveCloudSession();
-            return;
-          }
-          applyRemoteCloudState(payload.new.state, { forceFullSync: false });
+        const row = payload.new;
+        if (!row || !row.state) return;
+        const rev = Number(row.rev);
+        if (Number.isFinite(rev)) {
+          if (rev < lastSeenRev) return;
+          lastSeenRev = rev;
         }
+        if (row.state?.roomMeta?.isOnline === false && cloudMeta.role !== 'HOST') {
+          showToast('🔴', `O criador colocou a sala ${code} em modo OFFLINE.`);
+          leaveCloudSession();
+          return;
+        }
+        applyRemoteCloudState(row.state, { forceFullSync: false });
       }
     )
     .subscribe((status, err) => {
       realtimeConnectionStatus = status || 'UNKNOWN';
       if (status === 'SUBSCRIBED') {
         tacticalLogger.info('CLOUD', `WebSocket Realtime conectado na sala #${code}`);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        tacticalLogger.error(
-          'CLOUD',
-          `Falha no canal Realtime da sala #${code}: ${status}`,
-          err?.message || ''
-        );
+        setConnectionState('ONLINE');
+        if (Date.now() - lastFullSyncAt > 1500) resyncFromServer('subscribed');
+        startHeartbeat();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        if (cloudMeta.sessionCode === code) setConnectionState('RECONNECTING');
+        tacticalLogger.warn('CLOUD', `Canal Realtime da sala #${code}: ${status}`, err?.message || '');
       }
       renderLogsModal();
     });
 }
 
+function mergeRemoteSoldiersIntoHost(incoming) {
+  const box = outboxBox();
+  const removed = new Set((box && box.removed) || []);
+  const localById = new Map(state.soldiers.map((s) => [s.id, s]));
+  const incIds = new Set(incoming.map((s) => s.id));
+
+  const merged = incoming
+    .filter((s) => !removed.has(s.id))
+    .map((inc) => {
+      const loc = localById.get(inc.id);
+      const keepLocalStats =
+        loc && ((loc.stats && loc.stats.matches) || 0) > ((inc.stats && inc.stats.matches) || 0);
+      return {
+        ...inc,
+        stats: keepLocalStats ? loc.stats : inc.stats || { survived: 0, kia: 0, matches: 0 }
+      };
+    });
+  for (const loc of state.soldiers) {
+    if (!incIds.has(loc.id) && !removed.has(loc.id)) merged.push(loc);
+  }
+  state.soldiers = merged;
+}
+
 function applyRemoteCloudState(remoteState, options = { forceFullSync: false }) {
   if (!remoteState) return;
 
-  // 1. Ignore delayed WebSocket echo from our own device so rapid clicks (-1 MIN / +1 MIN) never revert!
-  if (!options.forceFullSync && remoteState.lastMutationBy && remoteState.lastMutationBy === cloudMeta.deviceId) {
+  // 1. Eco do próprio aparelho (a menos que seja sincronização completa)
+  if (
+    !options.forceFullSync &&
+    remoteState.lastMutationBy &&
+    remoteState.lastMutationBy === cloudMeta.deviceId
+  ) {
     return;
   }
 
   isApplyingRemoteUpdate = true;
-
   try {
     const prevMuted = state.settings.muted;
     const def = getDefaultState();
+    const remoteSoldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
 
-    // 2. PROTECTION FOR HOST: If we are HOST and the update came from a PLAYER (Soldier joining or marking KIA),
-    // ONLY update soldiers and aliveCount! NEVER overwrite Host's time settings, reports, wins, or running timer!
+    // 2. Juiz recebendo evento de Player
     if (
       !options.forceFullSync &&
       cloudMeta.role === 'HOST' &&
       remoteState.lastMutationRole === 'PLAYER'
     ) {
-      const incomingSoldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
-      // Merge soldiers while protecting authoritative match stats from Host
-      state.soldiers = incomingSoldiers.map((inc) => {
-        const localExisting = state.soldiers.find((s) => s.id === inc.id);
-        return {
-          ...inc,
-          stats:
-            (localExisting?.stats?.matches || 0) >= (inc.stats?.matches || 0)
-              ? localExisting.stats
-              : inc.stats || { survived: 0, kia: 0, matches: 0 }
-        };
-      });
-
+      mergeRemoteSoldiersIntoHost(remoteSoldiers);
+      applyOutboxOverlay();
       syncAliveCountFromRoster('A');
       syncAliveCountFromRoster('B');
 
-      // Check auto-elimination if Host is in active COMBAT
       if (runtime.phase === 'COMBAT') {
-        if (state.teams.A.aliveCount === 0 && getTeamSoldiers('A').length > 0) {
-          isApplyingRemoteUpdate = false;
-          finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.A.name} ZERADO)`, 'A');
-          return;
-        }
-        if (state.teams.B.aliveCount === 0 && getTeamSoldiers('B').length > 0) {
-          isApplyingRemoteUpdate = false;
-          finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.B.name} ZERADO)`, 'B');
-          return;
+        for (const k of ['A', 'B']) {
+          if (state.teams[k].aliveCount === 0 && getTeamSoldiers(k).length > 0) {
+            isApplyingRemoteUpdate = false;
+            finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams[k].name} ZERADO)`, k);
+            return;
+          }
         }
       }
-
       saveState(true);
       renderAll();
-      isApplyingRemoteUpdate = false;
       return;
     }
 
-    // 3. Full state sync (for PLAYER devices or initial room load)
+    // 3. Sincronização completa
     state.teams = {
       A: { ...def.teams.A, ...(remoteState.teams?.A || {}) },
       B: { ...def.teams.B, ...(remoteState.teams?.B || {}) }
     };
-    state.soldiers = Array.isArray(remoteState.soldiers) ? remoteState.soldiers : [];
-    state.settings = {
-      ...def.settings,
-      ...(remoteState.settings || {}),
-      muted: prevMuted
-    };
+    state.soldiers = remoteSoldiers.map((s) => ({ ...s }));
+    state.settings = { ...def.settings, ...(remoteState.settings || {}), muted: prevMuted };
     state.stats = { ...def.stats, ...(remoteState.stats || {}) };
     state.liveTimer = { ...def.liveTimer, ...(remoteState.liveTimer || {}) };
     if (remoteState.roomMeta) {
       state.roomMeta = { ...(state.roomMeta || {}), ...remoteState.roomMeta };
     }
 
-    // Synchronize local chronometer with shared liveTimer
-    syncRuntimeFromRemoteLiveTimer();
+    applyOutboxOverlay();
 
-    // If Host is in COMBAT and a team hit 0 alive, trigger auto-elimination
+    if (
+      cloudMeta.role === 'PLAYER' &&
+      cloudMeta.mySoldierId &&
+      !state.soldiers.some((s) => s.id === cloudMeta.mySoldierId) &&
+      !(outboxBox() && outboxBox().enlist)
+    ) {
+      cloudMeta.mySoldierId = null;
+      saveCloudMeta();
+      showToast('🪖', 'Seu operador não está mais na sala. Entre novamente para se alistar.');
+    }
+
+    syncRuntimeFromRemoteLiveTimer({ silent: Boolean(options.forceFullSync) });
+
     if (isHostOrLocal() && runtime.phase === 'COMBAT') {
-      if (state.teams.A.aliveCount === 0 && getTeamSoldiers('A').length > 0) {
-        isApplyingRemoteUpdate = false;
-        finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.A.name} ZERADO)`, 'A');
-        return;
-      }
-      if (state.teams.B.aliveCount === 0 && getTeamSoldiers('B').length > 0) {
-        isApplyingRemoteUpdate = false;
-        finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams.B.name} ZERADO)`, 'B');
-        return;
+      for (const k of ['A', 'B']) {
+        if (state.teams[k].aliveCount === 0 && getTeamSoldiers(k).length > 0) {
+          isApplyingRemoteUpdate = false;
+          finishMatchAndOpenVerification(`ELIMINAÇÃO TOTAL (${state.teams[k].name} ZERADO)`, k);
+          return;
+        }
       }
     }
 
@@ -1807,18 +2441,44 @@ function applyRemoteCloudState(remoteState, options = { forceFullSync: false }) 
   }
 }
 
-function leaveCloudSession() {
+function leaveCloudSession(opts = {}) {
+  const wasPlayer = cloudMeta.role === 'PLAYER';
   if (realtimeChannel && supabaseClient) {
     supabaseClient.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
+  stopHeartbeat();
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (resyncRetryTimer) {
+    clearTimeout(resyncRetryTimer);
+    resyncRetryTimer = null;
+  }
+  lastSeenRev = 0;
+  lastSentRosterSig = null;
+  setConnectionState('IDLE');
+
   cloudMeta.sessionCode = null;
   cloudMeta.role = 'LOCAL';
   saveCloudMeta();
   updateUrlRoomParam(null);
+
+  if (wasPlayer) {
+    clearMatchInterval();
+    runtime.phase = 'IDLE';
+    runtime.pausedFrom = null;
+    runtime.lastAnnouncedPhase = 'IDLE';
+    runtime.remainingPrepSec = state.settings.prepSeconds;
+    runtime.combatSeconds =
+      state.settings.mode === 'TIME_LIMIT' ? state.settings.timeLimitMinutes * 60 : 0;
+    state.liveTimer = getDefaultState().liveTimer;
+    saveState(true);
+  }
   renderAll();
   renderCloudModal();
-  showToast('🚪', 'Você saiu da sessão na nuvem. Modo Local ativado.');
+  if (!opts.silent) showToast('🚪', 'Você saiu da sessão na nuvem. Modo Local ativado.');
 }
 
 function updateUrlRoomParam(code) {
@@ -1840,12 +2500,68 @@ function isHostOrLocal() {
 /* ==========================================================================
    LIVE TIMER SYNCHRONIZATION BETWEEN HOST AND PARTICIPANT PHONES
    ========================================================================== */
+let clockOffsetMs = 0; // (relógio do servidor) - (Date.now() local)
+
+function getServerNow() {
+  return Date.now() + clockOffsetMs;
+}
+
+async function syncServerClock(samples = 5) {
+  if (!supabaseClient) return;
+  let best = null;
+  for (let i = 0; i < samples; i++) {
+    const t0 = Date.now();
+    try {
+      const serverMs = Number(await rpc('server_now_ms', {}));
+      const t1 = Date.now();
+      const rtt = t1 - t0;
+      if (Number.isFinite(serverMs) && (!best || rtt < best.rtt)) {
+        best = { rtt, offset: serverMs - (t0 + t1) / 2 };
+      }
+    } catch (e) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  if (best && best.rtt < 4000) {
+    const next = Math.round(best.offset);
+    if (Math.abs(next - clockOffsetMs) > 250 || clockOffsetMs === 0) {
+      clockOffsetMs = next;
+      tacticalLogger.info('TIMER', `Relógio sincronizado: offset ${clockOffsetMs}ms (rtt ${best.rtt}ms)`);
+    }
+  }
+}
+
+function isTimerPhase(p) {
+  return p === 'PREP' || p === 'COMBAT';
+}
+
+function phaseElapsedSec(lt) {
+  return Math.max(0, Math.floor((getServerNow() - lt.phaseStartedAt) / 1000));
+}
+
+function refreshRuntimeFromClock() {
+  const lt = state.liveTimer;
+  if (!lt || !lt.phaseStartedAt) return;
+  if (runtime.phase === 'PREP') {
+    runtime.remainingPrepSec = Math.max(
+      0,
+      (lt.initialPrepSec ?? state.settings.prepSeconds) - phaseElapsedSec(lt)
+    );
+  } else if (runtime.phase === 'COMBAT') {
+    const el = phaseElapsedSec(lt);
+    runtime.combatSeconds =
+      state.settings.mode === 'TIME_LIMIT'
+        ? Math.max(0, (lt.initialCombatSec ?? state.settings.timeLimitMinutes * 60) - el)
+        : (lt.initialCombatSec || 0) + el;
+  }
+}
+
 function syncRuntimeToLiveTimer() {
   state.liveTimer = {
     phase: runtime.phase,
     pausedFrom: runtime.pausedFrom,
-    phaseStartedAt:
-      runtime.phase === 'PREP' || runtime.phase === 'COMBAT' ? Date.now() : null,
+    phaseStartedAt: isTimerPhase(runtime.phase) ? getServerNow() : null,
     initialPrepSec: runtime.remainingPrepSec,
     initialCombatSec: runtime.combatSeconds,
     snapshotRemainingPrepSec: runtime.remainingPrepSec,
@@ -1853,7 +2569,70 @@ function syncRuntimeToLiveTimer() {
   };
 }
 
-function syncRuntimeFromRemoteLiveTimer() {
+function clearMatchInterval() {
+  if (runtime.timerInterval) {
+    clearTimeout(runtime.timerInterval);
+    runtime.timerInterval = null;
+  }
+}
+
+function startTimerLoop() {
+  clearMatchInterval();
+  if (!isTimerPhase(runtime.phase) || !state.liveTimer || !state.liveTimer.phaseStartedAt) return;
+
+  const loop = () => {
+    runtime.timerInterval = null;
+    if (!isTimerPhase(runtime.phase) || !state.liveTimer || !state.liveTimer.phaseStartedAt) return;
+    unifiedTick();
+    if (!isTimerPhase(runtime.phase) || runtime.timerInterval) return;
+    const intoSecond = (((getServerNow() - state.liveTimer.phaseStartedAt) % 1000) + 1000) % 1000;
+    runtime.timerInterval = setTimeout(loop, 1000 - intoSecond + 4);
+  };
+  loop();
+}
+
+function unifiedTick() {
+  const host = isHostOrLocal();
+
+  if (runtime.phase === 'PREP') {
+    const prev = runtime.remainingPrepSec;
+    refreshRuntimeFromClock();
+    const rem = runtime.remainingPrepSec;
+    if (rem <= 0) {
+      if (host) {
+        enterCombatPhase();
+      } else {
+        renderChronometer();
+      }
+      return;
+    }
+    if (rem !== prev) {
+      if (rem > 10) {
+        if (rem % 15 === 0) audioEngine.playDoubleBeep();
+      } else {
+        audioEngine.playCountdownBeep(rem);
+      }
+    }
+    renderChronometer();
+  } else if (runtime.phase === 'COMBAT') {
+    const prev = runtime.combatSeconds;
+    refreshRuntimeFromClock();
+    if (state.settings.mode === 'TIME_LIMIT') {
+      if (runtime.combatSeconds <= 0) {
+        runtime.combatSeconds = 0;
+        renderChronometer();
+        if (host) finishMatchAndOpenVerification('TEMPO ESGOTADO (00:00)', null);
+        return;
+      }
+      if (runtime.combatSeconds !== prev && runtime.combatSeconds <= 10) {
+        audioEngine.playCountdownBeep(runtime.combatSeconds);
+      }
+    }
+    renderChronometer();
+  }
+}
+
+function syncRuntimeFromRemoteLiveTimer(opts = {}) {
   const lt = state.liveTimer;
   if (!lt) return;
 
@@ -1861,42 +2640,25 @@ function syncRuntimeFromRemoteLiveTimer() {
   runtime.phase = lt.phase || 'IDLE';
   runtime.pausedFrom = lt.pausedFrom || null;
 
-  // Trigger audio announcements on participant phones when phase transitions!
   if (oldPhase !== runtime.phase && runtime.lastAnnouncedPhase !== runtime.phase) {
     runtime.lastAnnouncedPhase = runtime.phase;
-    if (runtime.phase === 'COMBAT') {
-      audioEngine.announceCombatStart();
-      requestWakeLock();
-    } else if (runtime.phase === 'VERIFY') {
-      audioEngine.announceGameOver();
-      releaseWakeLock();
-    } else if (runtime.phase === 'PREP') {
-      audioEngine.playDoubleBeep();
-      requestWakeLock();
+    if (!opts.silent) {
+      if (runtime.phase === 'COMBAT') {
+        audioEngine.announceCombatStart();
+        requestWakeLock();
+      } else if (runtime.phase === 'VERIFY') {
+        audioEngine.announceGameOver();
+        releaseWakeLock();
+      } else if (runtime.phase === 'PREP') {
+        audioEngine.playDoubleBeep();
+        requestWakeLock();
+      }
     }
   }
 
-  if (runtime.phase === 'PREP' && lt.phaseStartedAt) {
-    const elapsed = Math.floor((Date.now() - lt.phaseStartedAt) / 1000);
-    runtime.remainingPrepSec = Math.max(0, (lt.initialPrepSec || state.settings.prepSeconds) - elapsed);
-    if (!isHostOrLocal()) {
-      clearMatchInterval();
-      runtime.timerInterval = setInterval(tickGuestChronometer, 1000);
-    }
-  } else if (runtime.phase === 'COMBAT' && lt.phaseStartedAt) {
-    const elapsed = Math.floor((Date.now() - lt.phaseStartedAt) / 1000);
-    if (state.settings.mode === 'TIME_LIMIT') {
-      runtime.combatSeconds = Math.max(
-        0,
-        (lt.initialCombatSec ?? state.settings.timeLimitMinutes * 60) - elapsed
-      );
-    } else {
-      runtime.combatSeconds = (lt.initialCombatSec || 0) + elapsed;
-    }
-    if (!isHostOrLocal()) {
-      clearMatchInterval();
-      runtime.timerInterval = setInterval(tickGuestChronometer, 1000);
-    }
+  if (isTimerPhase(runtime.phase) && lt.phaseStartedAt) {
+    refreshRuntimeFromClock();
+    startTimerLoop();
   } else {
     clearMatchInterval();
     runtime.remainingPrepSec = lt.snapshotRemainingPrepSec ?? state.settings.prepSeconds;
@@ -1906,30 +2668,14 @@ function syncRuntimeFromRemoteLiveTimer() {
   }
 }
 
-function tickGuestChronometer() {
+function restoreRuntimeFromLiveTimer() {
   const lt = state.liveTimer;
-  if (!lt || !lt.phaseStartedAt) return;
-
-  const elapsed = Math.floor((Date.now() - lt.phaseStartedAt) / 1000);
-  if (runtime.phase === 'PREP') {
-    runtime.remainingPrepSec = Math.max(0, (lt.initialPrepSec || state.settings.prepSeconds) - elapsed);
-    if (runtime.remainingPrepSec <= 10 && runtime.remainingPrepSec >= 1) {
-      audioEngine.playCountdownBeep(runtime.remainingPrepSec);
-    }
-  } else if (runtime.phase === 'COMBAT') {
-    if (state.settings.mode === 'TIME_LIMIT') {
-      runtime.combatSeconds = Math.max(
-        0,
-        (lt.initialCombatSec ?? state.settings.timeLimitMinutes * 60) - elapsed
-      );
-      if (runtime.combatSeconds <= 10 && runtime.combatSeconds >= 1) {
-        audioEngine.playCountdownBeep(runtime.combatSeconds);
-      }
-    } else {
-      runtime.combatSeconds = (lt.initialCombatSec || 0) + elapsed;
-    }
+  if (!lt || !lt.phase || lt.phase === 'IDLE') return;
+  syncRuntimeFromRemoteLiveTimer({ silent: true });
+  if (runtime.phase === 'PREP' || runtime.phase === 'COMBAT') requestWakeLock();
+  if (runtime.phase === 'VERIFY' && isHostOrLocal()) {
+    finishMatchAndOpenVerification('CONFERÊNCIA RETOMADA', null, { silent: true });
   }
-  renderChronometer();
 }
 
 /* ==========================================================================
@@ -1959,6 +2705,7 @@ function resetAllSoldiersToAlive() {
   if (teamBSoldiers.length > 0) {
     state.teams.B.aliveCount = teamBSoldiers.length;
   }
+  if (cloudMeta.role === 'HOST') queueHostSync({ roster: true, resetAlive: true });
 }
 
 function adjustTeamAliveCount(teamKey, delta) {
@@ -1973,21 +2720,25 @@ function adjustTeamAliveCount(teamKey, delta) {
 
   state.teams[teamKey].aliveCount = next;
 
+  let flipped = null;
   const teamSoldiers = getTeamSoldiers(teamKey);
   if (teamSoldiers.length > 0) {
     if (delta < 0) {
       const aliveList = teamSoldiers.filter((s) => s.alive);
       if (aliveList.length > next) {
-        aliveList[aliveList.length - 1].alive = false;
+        flipped = aliveList[aliveList.length - 1];
+        flipped.alive = false;
       }
     } else if (delta > 0) {
       const kiaList = teamSoldiers.filter((s) => !s.alive);
       if (kiaList.length > 0 && teamSoldiers.filter((s) => s.alive).length < next) {
-        kiaList[0].alive = true;
+        flipped = kiaList[0];
+        flipped.alive = true;
       }
     }
   }
 
+  if (flipped) queueSoldierAlive(flipped);
   audioEngine.playTone(delta > 0 ? 880 : 340, 70, 'triangle', 0.18);
   saveState();
   renderAll();
@@ -2010,9 +2761,10 @@ function toggleSoldierAliveInField(soldierId) {
 
   soldier.alive = !soldier.alive;
   syncAliveCountFromRoster(soldier.team);
+  queueSoldierAlive(soldier);
 
   audioEngine.playTone(soldier.alive ? 920 : 310, 80, 'triangle', 0.2);
-  saveState();
+  saveState(true);
   renderAll();
   checkAutoEliminationTrigger(soldier.team);
 }
@@ -2035,13 +2787,6 @@ function formatMMSS(totalSeconds) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function clearMatchInterval() {
-  if (runtime.timerInterval) {
-    clearInterval(runtime.timerInterval);
-    runtime.timerInterval = null;
-  }
 }
 
 function startMatchSequence() {
@@ -2068,32 +2813,10 @@ function startMatchSequence() {
     audioEngine.playDoubleBeep();
     saveState();
     renderAll();
-    clearMatchInterval();
-    runtime.timerInterval = setInterval(tickPrep, 1000);
+    startTimerLoop();
   } else {
     enterCombatPhase();
   }
-}
-
-function tickPrep() {
-  if (runtime.phase !== 'PREP') return;
-
-  runtime.remainingPrepSec -= 1;
-
-  if (runtime.remainingPrepSec <= 0) {
-    enterCombatPhase();
-    return;
-  }
-
-  if (runtime.remainingPrepSec > 10) {
-    if (runtime.remainingPrepSec % 15 === 0) {
-      audioEngine.playDoubleBeep();
-    }
-  } else if (runtime.remainingPrepSec >= 1 && runtime.remainingPrepSec <= 10) {
-    audioEngine.playCountdownBeep(runtime.remainingPrepSec);
-  }
-
-  renderChronometer();
 }
 
 function enterCombatPhase() {
@@ -2110,36 +2833,14 @@ function enterCombatPhase() {
   saveState();
   renderAll();
 
-  runtime.timerInterval = setInterval(tickCombat, 1000);
-}
-
-function tickCombat() {
-  if (runtime.phase !== 'COMBAT') return;
-
-  if (state.settings.mode === 'TIME_LIMIT') {
-    runtime.combatSeconds -= 1;
-
-    if (runtime.combatSeconds <= 0) {
-      runtime.combatSeconds = 0;
-      renderChronometer();
-      finishMatchAndOpenVerification('TEMPO ESGOTADO (00:00)', null);
-      return;
-    }
-
-    if (runtime.combatSeconds <= 10 && runtime.combatSeconds >= 1) {
-      audioEngine.playCountdownBeep(runtime.combatSeconds);
-    }
-  } else {
-    runtime.combatSeconds += 1;
-  }
-
-  renderChronometer();
+  startTimerLoop();
 }
 
 function togglePauseResumeMatch() {
   if (!isHostOrLocal()) return;
 
   if (runtime.phase === 'PREP' || runtime.phase === 'COMBAT') {
+    refreshRuntimeFromClock();
     runtime.pausedFrom = runtime.phase;
     runtime.phase = 'PAUSED';
     runtime.lastAnnouncedPhase = 'PAUSED';
@@ -2155,12 +2856,7 @@ function togglePauseResumeMatch() {
     requestWakeLock();
     syncRuntimeToLiveTimer();
     audioEngine.playTone(660, 120, 'sine', 0.2);
-    clearMatchInterval();
-    if (runtime.phase === 'PREP') {
-      runtime.timerInterval = setInterval(tickPrep, 1000);
-    } else {
-      runtime.timerInterval = setInterval(tickCombat, 1000);
-    }
+    startTimerLoop();
     saveState();
     renderAll();
   }
@@ -2187,9 +2883,11 @@ function resetChronometerToIdle() {
    ========================================================================== */
 function finishMatchAndOpenVerification(
   reasonText = 'ENCERRAMENTO MANUAL PELO ÁRBITRO',
-  eliminatedTeamKey = null
+  eliminatedTeamKey = null,
+  opts = {}
 ) {
   if (!isHostOrLocal()) return;
+  if (isTimerPhase(runtime.phase)) refreshRuntimeFromClock();
 
   clearMatchInterval();
   if (runtime.phase === 'PREP' || runtime.phase === 'COMBAT') {
@@ -2201,7 +2899,7 @@ function finishMatchAndOpenVerification(
   syncRuntimeToLiveTimer();
   saveState();
 
-  audioEngine.announceGameOver();
+  if (!opts.silent) audioEngine.announceGameOver();
 
   const draftStatus = {};
   state.soldiers.forEach((s) => {
@@ -2398,6 +3096,7 @@ function addSoldier(nameRaw, teamKey, bindToCurrentDevice = false, rankOverride 
   }
 
   syncAliveCountFromRoster(newSoldier.team);
+  if (cloudMeta.role === 'PLAYER') queueEnlist(newSoldier);
   saveState();
   renderAll();
   renderRosterModal();
@@ -2410,6 +3109,10 @@ function addSoldier(nameRaw, teamKey, bindToCurrentDevice = false, rankOverride 
 }
 
 function cycleSoldierRank(soldierId) {
+  if (cloudMeta.role === 'PLAYER' && soldierId !== cloudMeta.mySoldierId) {
+    showToast('🔒', 'Só o Juiz altera outros operadores.');
+    return;
+  }
   const soldier = state.soldiers.find((s) => s.id === soldierId);
   if (!soldier) return;
 
@@ -2418,12 +3121,17 @@ function cycleSoldierRank(soldierId) {
   const nextRank = order[(currentIdx + 1) % order.length];
   soldier.rank = nextRank;
 
+  if (cloudMeta.role === 'PLAYER') queueEnlist(soldier);
   saveState();
   renderAll();
   renderRosterModal();
 }
 
 function switchSoldierTeam(soldierId) {
+  if (cloudMeta.role === 'PLAYER' && soldierId !== cloudMeta.mySoldierId) {
+    showToast('🔒', 'Só o Juiz altera outros operadores.');
+    return;
+  }
   const soldier = state.soldiers.find((s) => s.id === soldierId);
   if (!soldier) return;
 
@@ -2432,12 +3140,17 @@ function switchSoldierTeam(soldierId) {
 
   syncAliveCountFromRoster('A');
   syncAliveCountFromRoster('B');
+  if (cloudMeta.role === 'PLAYER') queueEnlist(soldier);
   saveState();
   renderAll();
   renderRosterModal();
 }
 
 function deleteSoldier(soldierId) {
+  if (cloudMeta.role === 'PLAYER' && soldierId !== cloudMeta.mySoldierId) {
+    showToast('🔒', 'Só o Juiz remove outros operadores.');
+    return;
+  }
   const soldier = state.soldiers.find((s) => s.id === soldierId);
   if (!soldier) return;
   const oldTeam = soldier.team;
@@ -2451,6 +3164,7 @@ function deleteSoldier(soldierId) {
   const remainingInTeam = getTeamSoldiers(oldTeam);
   state.teams[oldTeam].aliveCount = remainingInTeam.filter((s) => s.alive).length;
 
+  if (cloudMeta.role === 'HOST') queueHostSync({ roster: true, removedIds: [soldierId] });
   saveState();
   renderAll();
   renderRosterModal();
@@ -2485,6 +3199,7 @@ function shuffleAndBalanceTeams() {
   state.soldiers = shuffled;
   syncAliveCountFromRoster('A');
   syncAliveCountFromRoster('B');
+  if (cloudMeta.role === 'HOST') queueHostSync({ roster: true, resetAlive: true });
   saveState();
   renderAll();
   renderRosterModal();
@@ -3652,8 +4367,25 @@ function initPWA() {
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register('./sw.js')
-        .then(() => {
+        .then((reg) => {
           pwaBadge.innerHTML = '🟢 PRONTO OFFLINE';
+          const promoteIfIdle = (worker) => {
+            if (worker && runtime.phase === 'IDLE') {
+              worker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          };
+          if (reg && reg.waiting) promoteIfIdle(reg.waiting);
+          if (reg && reg.addEventListener) {
+            reg.addEventListener('updatefound', () => {
+              const nw = reg.installing;
+              if (!nw) return;
+              nw.addEventListener('statechange', () => {
+                if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                  promoteIfIdle(nw);
+                }
+              });
+            });
+          }
         })
         .catch(() => {
           pwaBadge.innerHTML = '🟢 MODO LOCAL ATIVO';
@@ -3829,7 +4561,11 @@ function bindEvents() {
     if (!confirmed) return;
 
     clearMatchInterval();
+    const allIds = state.soldiers.map((s) => s.id);
     state = getDefaultState();
+    if (cloudMeta.role === 'HOST') {
+      queueHostSync({ roster: true, removedIds: allIds, force: true });
+    }
     saveState();
     resetChronometerToIdle();
     showToast('🗑️', 'Sessão zerada! Novo jogo pronto.');
@@ -4185,21 +4921,21 @@ function bindEvents() {
 // Reconnect to active session or URL ?room=CODE parameter on boot
 async function checkInitialCloudSession() {
   initSupabaseClient();
-  fetchOpenOnlineRooms();
-  if (cloudMeta.authUser) {
-    fetchMyCreatedRooms();
+  installConnectivityHooks();
+  if (supabaseClient) {
+    syncServerClock();
+    fetchOpenOnlineRooms();
+    if (cloudMeta.authUser) fetchMyCreatedRooms();
   }
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const roomFromUrl = sanitizeSessionCode(urlParams.get('room'));
-
+  const roomFromUrl = sanitizeSessionCode(new URLSearchParams(window.location.search).get('room'));
   if (roomFromUrl) {
     document.getElementById('inputJoinSessionCode').value = roomFromUrl;
     const authJoinCode = document.getElementById('inputAuthJoinCode');
     if (authJoinCode) authJoinCode.value = roomFromUrl;
 
     if (cloudMeta.sessionCode !== roomFromUrl) {
-      // Open Central Access Modal on Quick Join tab so Soldier can enter immediately without room creation privileges
+      if (cloudMeta.sessionCode) leaveCloudSession({ silent: true });
       renderAuthModal();
       document.getElementById('modalAuth').classList.remove('hidden');
       document.getElementById('tabAuthQuickJoin')?.click();
@@ -4209,53 +4945,8 @@ async function checkInitialCloudSession() {
   }
 
   if (cloudMeta.sessionCode && supabaseClient) {
-    try {
-      const { data, error } = await supabaseClient
-        .from('tactical_sessions')
-        .select('*')
-        .eq('code', cloudMeta.sessionCode)
-        .maybeSingle();
-
-      if (error) {
-        tacticalLogger.error('CLOUD', `Erro ao reconectar na sala #${cloudMeta.sessionCode}`, error.message);
-      }
-
-      if (data && data.state) {
-        const rowOwnerEmail = data.state?.roomMeta?.ownerEmail?.toLowerCase();
-        const currentEmail = cloudMeta.authUser?.email?.toLowerCase();
-        const isCreator =
-          Boolean(cloudMeta.authUser?.isAdmin && (!rowOwnerEmail || rowOwnerEmail === currentEmail)) ||
-          (currentEmail && rowOwnerEmail && rowOwnerEmail === currentEmail) ||
-          data.host_id === cloudMeta.deviceId;
-
-        const isOnline = data.state?.roomMeta?.isOnline !== false;
-        if (!isOnline && !isCreator) {
-          leaveCloudSession();
-          return;
-        }
-
-        cloudMeta.role = isCreator ? 'HOST' : 'PLAYER';
-        saveCloudMeta();
-
-        // Protect local Host stats/settings if local has newer matches than remote
-        const localMatches = state.stats?.totalMatches || 0;
-        const remoteMatches = data.state?.stats?.totalMatches || 0;
-        if (isCreator && localMatches > remoteMatches) {
-          tacticalLogger.warn(
-            'CLOUD',
-            `Preservando relatório local do Juiz (${localMatches} partidas vs ${remoteMatches} na nuvem)`
-          );
-          saveState(false);
-        } else {
-          applyRemoteCloudState(data.state, { forceFullSync: true });
-        }
-
-        subscribeToCloudSession(cloudMeta.sessionCode);
-        renderAll();
-      }
-    } catch (e) {
-      tacticalLogger.error('CLOUD', 'Exceção em checkInitialCloudSession', e?.message || String(e));
-    }
+    subscribeToCloudSession(cloudMeta.sessionCode);
+    await resyncFromServer('boot');
   }
 }
 
@@ -4267,5 +4958,6 @@ document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   renderAll();
   initPWA();
+  restoreRuntimeFromLiveTimer();
   checkInitialCloudSession();
 });
